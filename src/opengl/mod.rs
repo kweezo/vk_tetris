@@ -1,3 +1,3 @@
 mod renderer;
 
-pub use renderer::GL_Renderer;
+pub use renderer::GLRenderer;

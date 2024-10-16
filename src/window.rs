@@ -45,11 +45,11 @@ impl Window{
     /// let window = Window::new(1920, 1080, "This is a window!", false).unwrap();
     /// 
     /// ```
-    pub fn new(width: u32, height: u32, title: String, fullscreen: bool) -> Result<Window, WindowError>{
+    pub fn new(width: u32, height: u32, title: String, _fullscreen: bool) -> Result<Window, WindowError>{
         let mut glfw = glfw::init_no_callbacks()?;
 
         
-        let (mut window, events) = glfw.create_window(width, height, title.as_str(), glfw::WindowMode::Windowed)
+        let (window, events) = glfw.create_window(width, height, title.as_str(), glfw::WindowMode::Windowed)
         .expect("Failed to create the window");
 
         Ok(Window{glfw: glfw, window: window, events: events, width: width, height: height, title: title.clone()})
@@ -101,5 +101,10 @@ impl Window{
     /// Returns the mutable GLFW context handle of type `Glfw` 
     pub fn get_glfw_mut(&mut self) -> &mut glfw::Glfw{
         &mut self.glfw
+    }
+
+    ///Returns the window size
+    pub fn get_size(&self) -> (u32, u32){
+        (self.width, self.height)
     }
 }

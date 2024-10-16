@@ -12,6 +12,24 @@ pub enum Graphics_API{
 /// 
 pub trait Renderer{
     fn new(window: &mut Window) -> Self;
+
+    ///Sets the clear color of the screen
+    fn set_clear_color(&mut self, color: glm::Vec3);
+
+    ///This method is used to update the frame; *needs to be called once every frame*
+    /// 
+    ///  # Params
+    /// 
+    /// 'window': specifices the window that will be rendered too\ 
+    /// 
+    ///  # Example
+    /// 
+    /// ```
+    /// 
+    /// render(window);
+    /// 
+    /// ```
+    fn render(&self, window: &mut Window);
 } 
 
 ///
@@ -30,6 +48,6 @@ pub trait Renderer{
 /// 
 /// `let renderer = create_renderer(Graphics_API::OPENGL, window)`
 /// 
-pub fn create_renderer(api: Graphics_API, window: &mut Window) -> impl Renderer{
-    GL_Renderer::new(window)
+pub fn create_renderer(_api: Graphics_API, window: &mut Window) -> impl Renderer{
+    GLRenderer::new(window)
 }
