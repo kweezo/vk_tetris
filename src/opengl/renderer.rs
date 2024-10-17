@@ -39,7 +39,7 @@ impl renderer::Renderer for GLRenderer{
     }
 
 
-    fn load_texture(path: &str) -> Result<impl Texture, image::ImageError>{
+    fn create_texture(&self, path: &str) -> Result<impl Texture, TextureError>{
         GLTexture::new(path)
     }
 }

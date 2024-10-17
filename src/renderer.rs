@@ -31,7 +31,7 @@ pub trait Renderer{
     fn render(&self, window: &mut Window);
 
 
-    fn load_texture(path: &str) -> Result<impl Texture, image::ImageError>;
+    fn create_texture(&self, path: &str) -> Result<impl Texture, TextureError>;
 } 
 
 ///

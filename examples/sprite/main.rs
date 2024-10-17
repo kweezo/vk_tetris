@@ -5,6 +5,9 @@ fn main(){
     .unwrap();
 
     let mut renderer = vrtacnik_engine::create_renderer(vrtacnik_engine::Graphics_API::OPENGL, &mut window);
+    let tex={
+       renderer.create_texture("img.png") 
+    };
 
     renderer.set_clear_color(glm::Vector3::new(0f32, 0f32, 0f32));
 
