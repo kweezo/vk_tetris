@@ -1,4 +1,5 @@
 use glfw::Context;
+use opengl::texture::GLTexture;
 
 use crate::*;
 
@@ -35,5 +36,10 @@ impl renderer::Renderer for GLRenderer{
         unsafe{ gl::Clear(gl::COLOR_BUFFER_BIT) }
 
         window.get_window_mut().swap_buffers();
+    }
+
+
+    fn load_texture(path: &str) -> Result<impl Texture, image::ImageError>{
+        GLTexture::new(path)
     }
 }

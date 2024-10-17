@@ -1,4 +1,3 @@
-
 use crate::*;
 
 pub enum Graphics_API{
@@ -30,6 +29,9 @@ pub trait Renderer{
     /// 
     /// ```
     fn render(&self, window: &mut Window);
+
+
+    fn load_texture(path: &str) -> Result<impl Texture, image::ImageError>;
 } 
 
 ///

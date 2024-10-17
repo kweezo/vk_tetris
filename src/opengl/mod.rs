@@ -1,3 +1,4 @@
 mod renderer;
+pub use renderer::*;
 
-pub use renderer::GLRenderer;
+mod texture;
