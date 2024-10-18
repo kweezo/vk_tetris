@@ -31,7 +31,7 @@ pub trait Renderer{
     fn render(&self, window: &mut Window);
 
 
-    fn create_texture(&self, path: &str) -> Result<impl Texture, TextureError>;
+    fn create_texture(&self, path: &str) -> Result<Box<dyn Texture>, TextureError>;
 } 
 
 ///

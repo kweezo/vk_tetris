@@ -23,6 +23,7 @@ impl GLTexture{
             gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_T, gl::MIRRORED_REPEAT as i32);
             gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::NEAREST as i32);
             gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::LINEAR as i32);
+        }
 
             use image::ColorType::*;
 
@@ -41,8 +42,6 @@ impl GLTexture{
             if color_channel == gl::NONE{
                 return Err(TextureError::InvalidColorChannel);
             }
-
-        }
 
         Ok(tex)
     }

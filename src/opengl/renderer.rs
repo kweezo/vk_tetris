@@ -18,6 +18,10 @@ impl GLRenderer{
             gl::ClearColor(0f32, 0f32, 0f32, 1f32);
         }
     }
+
+    fn create_texture(path: &str) -> Result<GLTexture, TextureError>{
+        GLTexture::new(path)
+    }
 }
 
 impl renderer::Renderer for GLRenderer{
@@ -38,8 +42,7 @@ impl renderer::Renderer for GLRenderer{
         window.get_window_mut().swap_buffers();
     }
 
-
-    fn create_texture(&self, path: &str) -> Result<impl Texture, TextureError>{
-        GLTexture::new(path)
+    fn create_texture(&self, path: &str) -> Result<Box<dyn Texture>, TextureError> {
+        Ok(Box::new(GLTexture::new(path)?))
     }
 }
