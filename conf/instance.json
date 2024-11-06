@@ -1,9 +1,15 @@
 {
     "required_extensions":[
-        "test"
+
     ],
 
     "optional_extensions":[
-        "test1"
-    ]
+
+    ],
+
+    "validation_layers":[
+        "VK_LAYER_KHRONOS_validation"
+    ],
+
+    "enable_layers": true
 }

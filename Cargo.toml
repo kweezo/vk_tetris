@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-glfw = "0.58.0"
+glfw = {version = "0.58.0", features = ["vulkan"]} 
 glm = "0.2.3"
 assimp = "0.3.1"
 image = "0.25.3"
