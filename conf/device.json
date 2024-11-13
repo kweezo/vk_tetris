@@ -1,9 +1,7 @@
 {
-    "required_extensions":[
+    "required_extensions": [
         "VK_KHR_swapchain",
         "VK_EXT_descriptor_indexing"
     ],
-
-    "optional_extensions":[
-    ]
+    "optional_extensions": []
 }
