@@ -21,20 +21,21 @@ fn main() {
     let command_buffer = vulkan::CommandBuffer::new(core.get_device(), &command_pool);
     let pipeline = vulkan::Pipeline::new(core.get_device(), &shader, &core.get_swapchain());
 
-    let fence = vulkan::Fence::new(&core.get_device());
-    let present_semaphore = vulkan::Semaphore::new(&core.get_device());
-
     let mut current_frame = 0u32;
+
+    let image_available_semaphore = vulkan::Semaphore::new(&core.get_device());
+    let render_finished_semaphore = vulkan::Semaphore::new(&core.get_device());
+    let image_available_fence = vulkan::Fence::new(&core.get_device());
 
     while !window.get_window_handle().should_close() {
         unsafe{
            current_frame = core.get_swapchain().get_swapchain_info().swapchain_device.acquire_next_image
-                (core.get_swapchain().get_swapchain_info().swapchain, std::u64::MAX, vk::Semaphore::null(), fence.get_fence())
+                (core.get_swapchain().get_swapchain_info().swapchain, std::u64::MAX, image_available_semaphore.get_semaphore(), image_available_fence.get_fence())
                 .expect("Failed to acquire the next image from the swapchain").0;
 
 
-            core.get_device().get_ash_device().wait_for_fences(std::slice::from_ref(&fence.get_fence()), true, std::u64::MAX).expect("Failed to wait for all the fences (like what the fuck lmao)");
-            core.get_device().get_ash_device().reset_fences(std::slice::from_ref(&fence.get_fence())).expect("Failed to reset the fences");
+            core.get_device().get_ash_device().wait_for_fences(std::slice::from_ref(&image_available_fence.get_fence()), true, std::u64::MAX).expect("Failed to wait for fences");
+            core.get_device().get_ash_device().reset_fences(std::slice::from_ref(&image_available_fence.get_fence())).expect("Failed to reset the fences");
 
 
             core.get_device().get_ash_device().reset_command_pool(command_pool.get_command_pool(), vk::CommandPoolResetFlags::empty()).expect("Failed to reset the command pool");
@@ -65,15 +66,28 @@ fn main() {
 
             core.get_device().get_ash_device().cmd_bind_pipeline(command_buffer.get_command_buffer(), vk::PipelineBindPoint::GRAPHICS, pipeline.get_pipeline());
 
+
             core.get_device().get_ash_device().cmd_draw(command_buffer.get_command_buffer(), 3, 1, 0, 0);
+
 
             core.get_device().get_ash_device().cmd_end_render_pass(command_buffer.get_command_buffer());
 
             command_buffer.end(core.get_device());
 
 
+            let wait_dst_stage_mask = vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT;
+
             let submit_info = vk::SubmitInfo{
                 s_type: vk::StructureType::SUBMIT_INFO,
+                p_command_buffers: &command_buffer.get_command_buffer(),
+                command_buffer_count: 1,
+
+                p_wait_semaphores: &render_finished_semaphore.get_semaphore(),
+                p_wait_dst_stage_mask: &wait_dst_stage_mask,
+                wait_semaphore_count: 1,
+
+                p_signal_semaphores: &render_finished_semaphore.get_semaphore(),
+                signal_semaphore_count: 1,
                 ..Default::default()
             };
 
