@@ -9,4 +9,3 @@ pub use device::Device;
 
 mod swapchain;
 pub use swapchain::Swapchain;
-pub use swapchain::SwapchainInfo;

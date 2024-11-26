@@ -4,8 +4,8 @@ pub use core::Core;
 mod shader;
 pub use shader::Shader;
 
-mod pipeline;
-pub use pipeline::Pipeline;
+mod render_pass;
+pub use render_pass::RenderPass;
 
 mod command_buffer;
 pub use command_buffer::CommandBuffer;
@@ -18,3 +18,7 @@ pub use fence::Fence;
 
 mod semaphore;
 pub use semaphore::Semaphore;
+
+mod buffer;
+pub use buffer::Buffer;
+pub use buffer::BufferType;

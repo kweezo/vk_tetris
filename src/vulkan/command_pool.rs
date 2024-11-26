@@ -7,10 +7,12 @@ pub struct CommandPool {
 }
 
 impl CommandPool {
-    fn create_command_pool(device: &Device, queue_family_index: u32) -> vk::CommandPool {
+
+    fn create_command_pool(device: &Device, queue_family_index: u32, flags: vk::CommandPoolCreateFlags) -> vk::CommandPool {
         let create_info = vk::CommandPoolCreateInfo {
             s_type: vk::StructureType::COMMAND_POOL_CREATE_INFO,
             queue_family_index: queue_family_index,
+            flags: flags,
             ..Default::default()
         };
 
@@ -24,8 +26,8 @@ impl CommandPool {
         pool
     }
 
-    pub fn new(device: &Device, queue_family_index: u32) -> CommandPool {
-        let pool = CommandPool::create_command_pool(&device, queue_family_index);
+    pub fn new(device: &Device, queue_family_index: u32, flags: vk::CommandPoolCreateFlags) -> CommandPool {
+        let pool = CommandPool::create_command_pool(&device, queue_family_index, flags);
 
         CommandPool { command_pool: pool }
     }

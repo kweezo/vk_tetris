@@ -1,6 +1,6 @@
 use ash::{khr, vk, Entry};
 use glm::clamp;
-use std::{cmp::*, process::exit};
+use std::cmp::*;
 
 use super::*;
 use crate::Window;

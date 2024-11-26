@@ -154,11 +154,13 @@ impl Instance {
         let app_name: &CStr = unsafe { std::ffi::CStr::from_bytes_with_nul_unchecked(b"tetris\0") };
 
         #[allow(deprecated)]
-        let app_info = vk::ApplicationInfo::default()
-            .api_version(vk::API_VERSION_1_3)
-            .application_version(vk::make_version(0, 0, 1))
-            .engine_name(app_name)
-            .application_name(app_name);
+        let app_info = vk::ApplicationInfo{ 
+            api_version: vk::API_VERSION_1_3,
+            application_version: vk::make_version(0, 0, 1),
+            p_engine_name: app_name.as_ptr(),
+            p_application_name: app_name.as_ptr(),
+            ..Default::default()
+        };
 
         let create_info: vk::InstanceCreateInfo = vk::InstanceCreateInfo::default()
             .application_info(&app_info)

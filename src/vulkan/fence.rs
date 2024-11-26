@@ -1,4 +1,4 @@
-use ash::{khr, vk};
+use ash::vk;
 
 use super::core::*;
 
@@ -7,11 +7,11 @@ pub struct Fence{
 }
 
 impl Fence{
-    pub fn new(device: &Device) -> Fence{
+    pub fn new(device: &Device, signaled: bool) -> Fence{
 
         let create_info = vk::FenceCreateInfo{
             s_type: vk::StructureType::FENCE_CREATE_INFO,
-            flags: vk::FenceCreateFlags::SIGNALED,
+            flags: if signaled {vk::FenceCreateFlags::SIGNALED} else {vk::FenceCreateFlags::empty()},
             ..Default::default()
         };
 

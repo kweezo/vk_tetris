@@ -14,6 +14,8 @@ pub struct Device {
     queue_family_index: u32,
     queues: Vec<ash::vk::Queue>,
     curr_queue_index: u32,
+
+    allocator: vk_mem::Allocator
 }
 
 impl Device {
@@ -180,6 +182,14 @@ impl Device {
         available_extensions
     }
 
+    fn create_allocator(instance: &ash::Instance, physical_device: vk::PhysicalDevice, device: &ash::Device) -> vk_mem::Allocator{
+        let create_info = vk_mem::AllocatorCreateInfo::new(instance, device, physical_device);
+
+        let allocator = unsafe{vk_mem::Allocator::new(create_info).expect("Failed to create a new VMA allocator")};
+
+        allocator
+    }
+
     pub fn new(instance: &ash::Instance) -> Device {
         let conf = Device::load_config("conf/device.json");
 
@@ -199,12 +209,15 @@ impl Device {
 
         let queues = Device::get_device_queues(&device, queue_family_index, queue_count);
 
+        let allocator = Device::create_allocator(instance, physical_device, &device);
+
         Device {
             device: device,
             physical_device: physical_device,
             queue_family_index: queue_family_index,
             queues: queues,
             curr_queue_index: 0,
+            allocator: allocator,
         }
     }
 
@@ -216,6 +229,10 @@ impl Device {
         self.physical_device
     }
 
+    pub fn get_allocator(&self) -> &vk_mem::Allocator{
+        &self.allocator
+    } 
+
     pub fn get_queue_family_index(&self) -> u32 {
         self.queue_family_index
     }
@@ -225,4 +242,5 @@ impl Device {
         self.curr_queue_index = (self.curr_queue_index + 1) % self.queues.len() as u32;
         queue
     }
+
 }
