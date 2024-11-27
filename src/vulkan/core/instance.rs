@@ -1,6 +1,7 @@
 use ash::{
     vk::{self, MAX_EXTENSION_NAME_SIZE},
     Entry,
+    ext
 };
 use serde::Deserialize;
 use std::{ffi::CStr, ffi::CString, fs};
@@ -17,6 +18,9 @@ struct Config {
 
 pub struct Instance {
     vk_instance: ash::Instance,
+
+    debug_messenger_instance: ext::debug_utils::Instance,
+    debug_messenger: vk::DebugUtilsMessengerEXT
 }
 
 impl Instance {
@@ -36,13 +40,14 @@ impl Instance {
 
         let mut available_extensions: Vec<CString> = Vec::new();
 
+        
         for supported_extension in &supported_extensions {
             for extension in extensions {
                 let mut optional_extension_v: Vec<i8> =
-                    extension.chars().map(|c| c as i8).collect();
-
+                extension.chars().map(|c| c as i8).collect();
+                
                 optional_extension_v.resize(MAX_EXTENSION_NAME_SIZE, 0);
-
+                
                 if supported_extension.extension_name == *optional_extension_v {
                     available_extensions.push(
                         CString::new(extension.as_str()).expect("Failed to create a new CString"),
@@ -50,7 +55,7 @@ impl Instance {
                 }
             }
         }
-
+        
         available_extensions
     }
 
@@ -102,8 +107,8 @@ impl Instance {
         let required_extensions_cstr: Vec<CString> =
             Instance::get_supported_extensions(entry, &glfw_extensions);
 
-        if required_extensions_cstr.len() != conf.required_extensions.len() + glfw_extensions.len()
-        {
+   
+        if required_extensions_cstr.len() != conf.required_extensions.len() + glfw_extensions.len(){//TODO, fix edge case where glfw_extensions and required_extensions are overlapping
             panic!("Error: not all required instance extensions present");
         }
 
@@ -127,6 +132,23 @@ impl Instance {
         extensions_cstr.extend(optional_extensions_cstr);
 
         (extensions_cstr_ptr, extensions_cstr)
+    }
+
+    fn create_debug_messenger(entry: &Entry, instance: &ash::Instance) -> (vk::DebugUtilsMessengerEXT, ext::debug_utils::Instance){
+        let create_info = vk::DebugUtilsMessengerCreateInfoEXT{
+            s_type: vk::StructureType::DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
+            message_severity: vk::DebugUtilsMessageSeverityFlagsEXT::WARNING | vk::DebugUtilsMessageSeverityFlagsEXT::ERROR | vk::DebugUtilsMessageSeverityFlagsEXT::INFO,
+            message_type: vk::DebugUtilsMessageTypeFlagsEXT::GENERAL | vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE | vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION,
+            ..Default::default()
+        };
+
+        let debug_messenger_instance = ext::debug_utils::Instance::new(entry, instance);
+        let debug_messenger = unsafe{debug_messenger_instance.create_debug_utils_messenger(&create_info, None)}
+        .expect("Failed to create the debug utils messenger");
+
+        unsafe{entry.get_instance_proc_addr(instance.handle(), "vkCreateDebugUtilsMessengerEXT".as_ptr() as *const i8).unwrap() as ash::vk::PFN_vkCreateDebugUtilsMessengerEXT};
+
+        (debug_messenger, debug_messenger_instance)
     }
 
     pub fn new(entry: &Entry, window: &Window) -> Instance {
@@ -173,8 +195,13 @@ impl Instance {
                 .expect("Failed to create a vkInstance")
         };
 
+        let (debug_messenger, debug_messenger_instance) = Instance::create_debug_messenger(entry, &instance);
+
         Instance {
             vk_instance: instance,
+
+            debug_messenger_instance: debug_messenger_instance,
+            debug_messenger: debug_messenger
         }
     }
 
