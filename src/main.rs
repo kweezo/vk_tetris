@@ -133,22 +133,22 @@ fn main() {
         ..Default::default()
     };
 
-    let copy_descriptor_set = vk::CopyDescriptorSet{
-        s_type: vk::StructureType::COPY_DESCRIPTOR_SET,
-        src_set: descriptor_set.get_set(),
-        src_binding: vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC.as_raw() as u32,
-        src_array_element: 0,
+    //let copy_descriptor_set = vk::CopyDescriptorSet{
+    //    s_type: vk::StructureType::COPY_DESCRIPTOR_SET,
+    //    src_set: descriptor_set.get_set(),
+    //    src_binding: vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC.as_raw() as u32,
+    //    src_array_element: 0,
 
-        dst_set: descriptor_set.get_set(),
-        dst_binding: vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC.as_raw() as u32,
-        dst_array_element: 0,
-        
-        descriptor_count: 1,
-        ..Default::default()
-    };
+    //    dst_set: descriptor_set.get_set(),
+    //    dst_binding: vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC.as_raw() as u32,
+    //    dst_array_element: 0,
+    //    
+    //    descriptor_count: 1,
+    //    ..Default::default()
+    //};
 
     unsafe{
-        device!(core).update_descriptor_sets(std::slice::from_ref(&write_descriptor_set), std::slice::from_ref(&copy_descriptor_set));
+        device!(core).update_descriptor_sets(std::slice::from_ref(&write_descriptor_set), &[]);
     }
 
     while !window.get_window_handle().should_close() {
