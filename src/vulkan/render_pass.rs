@@ -6,16 +6,28 @@ use super::core::*;
 
 pub struct RenderPass {
     pipeline: vk::Pipeline,
+    pipeline_layout: vk::PipelineLayout,
     render_pass: vk::RenderPass,
     framebuffers: Vec<vk::Framebuffer>,
 }
 
 impl RenderPass {
-    fn create_pipeline_layout(device: &Device) -> vk::PipelineLayout {
+    fn create_pipeline_layout(device: &Device, set_layout: vk::DescriptorSetLayout) -> vk::PipelineLayout {
+
+        let push_constant_range = vk::PushConstantRange{
+            stage_flags: vk::ShaderStageFlags::ALL,
+            offset: 0,
+            size: 128
+        };
+
         let create_info = vk::PipelineLayoutCreateInfo {
             s_type: vk::StructureType::PIPELINE_LAYOUT_CREATE_INFO,
-            set_layout_count: 0,
-            push_constant_range_count: 0,
+            set_layout_count: 1,
+            p_set_layouts: &set_layout,
+
+            push_constant_range_count: 1,
+            p_push_constant_ranges: &push_constant_range,
+
             ..Default::default()
         };
 
@@ -77,8 +89,8 @@ impl RenderPass {
         let rasterization_state = vk::PipelineRasterizationStateCreateInfo {
             s_type: vk::StructureType::PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
             polygon_mode: vk::PolygonMode::FILL,
-            cull_mode: vk::CullModeFlags::BACK,
-            front_face: vk::FrontFace::CLOCKWISE,
+            cull_mode: vk::CullModeFlags::NONE,//TODO Why doesnt back work
+            front_face: vk::FrontFace::COUNTER_CLOCKWISE,
             line_width: 1f32,
             ..Default::default()
         };
@@ -242,8 +254,9 @@ impl RenderPass {
         shader: &Shader,
         swapchain: &Swapchain,
         pipeline_vertex_input_state: &vk::PipelineVertexInputStateCreateInfo,
+        set_layout: vk::DescriptorSetLayout,
     ) -> RenderPass {
-        let layout = RenderPass::create_pipeline_layout(device);
+        let layout = RenderPass::create_pipeline_layout(device, set_layout);
 
         let render_pass =
             RenderPass::create_render_pass(device, swapchain.get_swapchain_info().format.format);
@@ -267,6 +280,7 @@ impl RenderPass {
 
         RenderPass {
             pipeline: pipeline,
+            pipeline_layout: layout,
             render_pass: render_pass,
             framebuffers: framebuffers,
         }
@@ -282,5 +296,9 @@ impl RenderPass {
 
     pub fn get_framebuffer(&self, index: u32) -> vk::Framebuffer {
         self.framebuffers[index as usize]
+    }
+
+    pub fn get_layout(&self) -> vk::PipelineLayout{
+        self.pipeline_layout
     }
 }

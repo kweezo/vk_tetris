@@ -18,6 +18,7 @@ pkgs.mkShell {
     pkgs.wayland
     pkgs.wayland-protocols
     pkgs.libxkbcommon
+    pkgs.bashInteractive
   ];
   
 
@@ -27,4 +28,7 @@ pkgs.mkShell {
   ]; 
 
   VK_LAYER_PATH = "${pkgs.vulkan-validation-layers}/share/vulkan/explicit_layer.d"; 
+
+  "terminal.integrated.defaultProfile.linux" = "null";
+  "terminal.integrated.shell.linux" = "/run/current-system/sw/bin/bash";
 }

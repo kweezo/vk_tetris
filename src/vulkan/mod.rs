@@ -22,3 +22,5 @@ pub use semaphore::Semaphore;
 mod buffer;
 pub use buffer::Buffer;
 pub use buffer::BufferType;
+
+pub mod descriptor;

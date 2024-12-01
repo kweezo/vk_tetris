@@ -5,12 +5,14 @@ use super::*;
 
 pub enum BufferType{
     VERTEX,
-    INDEX
+    INDEX,
+    UNIFORM
 }
 
 pub struct Buffer{
     buffer: vk::Buffer,
-    allocation: vk_mem::Allocation
+    allocation: vk_mem::Allocation,
+    size: u64
 }
 
 impl Buffer{
@@ -92,9 +94,11 @@ impl Buffer{
     }
 
     pub fn new(device: &mut core::Device, command_buffer: &CommandBuffer, data: &[u8], buffer_type: BufferType) -> Buffer{
+
         let buffer_usage = match buffer_type{
             BufferType::VERTEX => vk::BufferUsageFlags::VERTEX_BUFFER,
-            BufferType::INDEX => vk::BufferUsageFlags::INDEX_BUFFER
+            BufferType::INDEX => vk::BufferUsageFlags::INDEX_BUFFER,
+            BufferType::UNIFORM => vk::BufferUsageFlags::UNIFORM_BUFFER
         };
 
         let (buffer, allocation) = Buffer::create_buffer(device, data.len(), buffer_usage | vk::BufferUsageFlags::TRANSFER_DST,
@@ -102,7 +106,16 @@ impl Buffer{
 
         Buffer::upload_data_to_buffer(device, buffer, command_buffer, data);
 
-        Buffer{buffer: buffer, allocation: allocation}
+
+        Buffer{buffer: buffer, allocation: allocation, size: data.len() as u64}
+    }
+
+    pub fn update(&self, device: &mut core::Device, command_buffer: &CommandBuffer, data: &[u8]){
+        if data.len() != self.size as usize{
+            eprintln!("WARNING: Trying to update buffer but the data provided is a different size");
+        }
+
+        Buffer::upload_data_to_buffer(device, self.buffer, command_buffer, data);
     }
 
     pub fn get_buffer(&self) -> vk::Buffer{

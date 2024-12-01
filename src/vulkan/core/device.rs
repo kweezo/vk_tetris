@@ -80,6 +80,18 @@ impl Device {
 
         let mut descriptor_indexing_features = vk::PhysicalDeviceDescriptorIndexingFeatures {
             s_type: vk::StructureType::PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES,
+
+            runtime_descriptor_array: true as u32,
+
+            descriptor_binding_partially_bound: true as u32,
+
+            shader_storage_buffer_array_non_uniform_indexing: true as u32,
+            shader_sampled_image_array_non_uniform_indexing: true as u32,
+            shader_storage_texel_buffer_array_non_uniform_indexing: true as u32,
+
+            descriptor_binding_storage_buffer_update_after_bind: true as u32,
+            descriptor_binding_sampled_image_update_after_bind: true as u32,
+            descriptor_binding_storage_image_update_after_bind: true as u32,
             ..Default::default()
         };
 

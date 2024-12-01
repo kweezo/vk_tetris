@@ -1,10 +1,12 @@
 #![allow(dead_code)]
 
 mod window;
-use ash::vk;
+use ash::vk::{self, ShaderModuleValidationCacheCreateInfoEXT};
 use window::*;
 
-use bytemuck::cast_slice;
+use bytemuck::{bytes_of, cast_slice};
+
+use glm::*;
 
 mod vulkan;
 
@@ -14,6 +16,13 @@ macro_rules! device {
     };
 }
 
+#[repr(align(32))]
+struct Transform{
+    v1: Vec2,
+    _padding1: [u8; 8],
+    v2: Vec2,
+    _padding2: [u8; 8]
+}
 
 fn main() {
     let mut window = Window::new(1280, 720, "le title");
@@ -58,10 +67,13 @@ fn main() {
         ..Default::default()
     };
 
+    let binding_size = (vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC, 1);
+    let descriptor_set = vulkan::descriptor::DescriptorSet::new(core.get_device(), std::slice::from_ref(&binding_size));
 
     let command_pool = vulkan::CommandPool::new(core.get_device(), core.get_device().get_queue_family_index(), vk::CommandPoolCreateFlags::empty());
     let command_buffer = vulkan::CommandBuffer::new(core.get_device(), &command_pool);
-    let pipeline = vulkan::RenderPass::new(core.get_device(), &shader, &core.get_swapchain(), &vertex_input_state);
+    let render_pass = vulkan::RenderPass::new(core.get_device(), &shader, &core.get_swapchain(),
+     &vertex_input_state, descriptor_set.get_layout());
 
     
     let image_available_semaphore: vulkan::Semaphore = vulkan::Semaphore::new(core.get_device());
@@ -69,10 +81,11 @@ fn main() {
 
     let render_finished_semaphore: vulkan::Semaphore = vulkan::Semaphore::new(core.get_device());
 
-    let vertex_data: [f32; 18] = [
-         0.0, -0.5,     1.0, 1.0, 1.0,  0.0/*padding */,
-         0.5,  0.5,     0.0, 1.0, 0.0,  0.0,
-        -0.5,  0.5,     0.0, 0.0, 1.0,  0.0,
+    let vertex_data: [f32; 24] = [
+        -0.5, -0.5,     0.0, 0.0, 0.0,  0.0/*padding */,
+        -0.5,  0.5,     0.0, 0.0, 0.0,  0.0,
+         0.5, -0.5,     0.0, 0.0, 0.0,  0.0,
+         0.5,  0.5,     0.0, 0.0, 0.0,  0.0,
     ];
 
     let index_data: [u16; 6] = [
@@ -80,8 +93,63 @@ fn main() {
         1, 2, 3
     ];
 
-    let mut vertex_buffer = vulkan::Buffer::new(core.get_device_mut(), &command_buffer, cast_slice(&vertex_data), vulkan::BufferType::VERTEX);
-    let mut index_buffer = vulkan::Buffer::new(core.get_device_mut(), &command_buffer, cast_slice(&index_data), vulkan::BufferType::INDEX);
+    let transform = Transform{
+        v1: Vector2::new(1f32, 0f32),
+        v2: Vector2::new(0f32, 1f32),
+
+        _padding1: [0; 8],
+        _padding2: [0; 8]
+    };
+
+    let mut vertex_buffer = vulkan::Buffer::new(core.get_device_mut(), &command_buffer, bytes_of(&vertex_data), vulkan::BufferType::VERTEX);
+
+    unsafe{
+        device!(core).reset_command_pool(command_pool.get_command_pool(), vk::CommandPoolResetFlags::empty()).expect("Failed to reset the command pool");
+    }
+    let mut index_buffer = vulkan::Buffer::new(core.get_device_mut(), &command_buffer, bytes_of(&index_data), vulkan::BufferType::INDEX);
+
+    unsafe{
+        device!(core).reset_command_pool(command_pool.get_command_pool(), vk::CommandPoolResetFlags::empty()).expect("Failed to reset the command pool");
+    }
+     
+    
+    let mut uniform_buffer = vulkan::Buffer::new(core.get_device_mut(), &command_buffer, unsafe{std::slice::from_raw_parts(&transform as *const _ as *const u8, std::mem::size_of_val(&transform))}, vulkan::BufferType::UNIFORM);
+    dbg!(unsafe{std::slice::from_raw_parts(&transform as *const _ as *const u8, std::mem::size_of_val(&transform))});
+
+    let descriptor_buffer_info = vk::DescriptorBufferInfo{
+        buffer: uniform_buffer.get_buffer(),
+        offset: 0,
+        range: vk::WHOLE_SIZE
+    };
+
+    let write_descriptor_set = vk::WriteDescriptorSet{
+        s_type: vk::StructureType::WRITE_DESCRIPTOR_SET,
+        dst_set: descriptor_set.get_set(),
+        dst_binding: vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC.as_raw() as u32,
+        dst_array_element: 0,
+        descriptor_count: 1,
+        descriptor_type: vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC,
+        p_buffer_info: &descriptor_buffer_info,
+        ..Default::default()
+    };
+
+    let copy_descriptor_set = vk::CopyDescriptorSet{
+        s_type: vk::StructureType::COPY_DESCRIPTOR_SET,
+        src_set: descriptor_set.get_set(),
+        src_binding: vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC.as_raw() as u32,
+        src_array_element: 0,
+
+        dst_set: descriptor_set.get_set(),
+        dst_binding: vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC.as_raw() as u32,
+        dst_array_element: 0,
+        
+        descriptor_count: 1,
+        ..Default::default()
+    };
+
+    unsafe{
+        device!(core).update_descriptor_sets(std::slice::from_ref(&write_descriptor_set), std::slice::from_ref(&copy_descriptor_set));
+    }
 
     while !window.get_window_handle().should_close() {
         unsafe{
@@ -115,8 +183,8 @@ fn main() {
 
             let render_pass_begin_info = vk::RenderPassBeginInfo{
                 s_type: vk::StructureType::RENDER_PASS_BEGIN_INFO,
-                render_pass: pipeline.get_render_pass(),
-                framebuffer: pipeline.get_framebuffer(current_frame),
+                render_pass: render_pass.get_render_pass(),
+                framebuffer: render_pass.get_framebuffer(current_frame),
                 render_area: render_area,
                 clear_value_count: 1,
                 p_clear_values: &clear_value,
@@ -126,14 +194,18 @@ fn main() {
 
             device!(core).cmd_begin_render_pass(command_buffer.get_command_buffer(), &render_pass_begin_info, vk::SubpassContents::INLINE);
 
-            device!(core).cmd_bind_pipeline(command_buffer.get_command_buffer(), vk::PipelineBindPoint::GRAPHICS, pipeline.get_pipeline());
+            device!(core).cmd_bind_pipeline(command_buffer.get_command_buffer(), vk::PipelineBindPoint::GRAPHICS, render_pass.get_pipeline());
 
             let offset: vk::DeviceSize = 0;
 
-            device!(core).cmd_bind_vertex_buffers(command_buffer.get_command_buffer(), 0, std::slice::from_ref(&vertex_buffer.get_buffer()), std::slice::from_ref(&offset));
-            //device!(core).cmd_bind_index_buffer(command_buffer.get_command_buffer(), index_buffer.get_buffer(), offset, vk::IndexType::UINT16);
-            device!(core).cmd_draw(command_buffer.get_command_buffer(), index_data.len() as u32, 1, 0, 0);
+            device!(core).cmd_bind_descriptor_sets(command_buffer.get_command_buffer(), vk::PipelineBindPoint::GRAPHICS, render_pass.get_layout(), 0, std::slice::from_ref(&descriptor_set.get_set()), std::slice::from_ref(&(offset as u32)));
 
+            let push_constants: [u8; 128] = [0; 128];
+            device!(core).cmd_push_constants(command_buffer.get_command_buffer(), render_pass.get_layout(), vk::ShaderStageFlags::ALL, offset as u32, &push_constants);
+
+            device!(core).cmd_bind_vertex_buffers(command_buffer.get_command_buffer(), 0, std::slice::from_ref(&vertex_buffer.get_buffer()), std::slice::from_ref(&offset));
+            device!(core).cmd_bind_index_buffer(command_buffer.get_command_buffer(), index_buffer.get_buffer(), offset, vk::IndexType::UINT16);
+            device!(core).cmd_draw_indexed(command_buffer.get_command_buffer(), index_data.len() as u32, 1, 0, 0, 0);
 
             device!(core).cmd_end_render_pass(command_buffer.get_command_buffer());
 
@@ -185,6 +257,7 @@ fn main() {
 
     unsafe{device!(core).device_wait_idle()}.expect("Failed to device wait idle");
 
+    uniform_buffer.destroy(core.get_device());
     vertex_buffer.destroy(core.get_device());
     index_buffer.destroy(core.get_device());
 }
