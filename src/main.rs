@@ -1,10 +1,10 @@
 #![allow(dead_code)]
 
 mod window;
-use ash::vk::{self, ShaderModuleValidationCacheCreateInfoEXT};
+use ash::vk;
 use window::*;
 
-use bytemuck::{bytes_of, cast_slice};
+use bytemuck::bytes_of;
 
 use glm::*;
 
@@ -114,7 +114,6 @@ fn main() {
      
     
     let mut uniform_buffer = vulkan::Buffer::new(core.get_device_mut(), &command_buffer, unsafe{std::slice::from_raw_parts(&transform as *const _ as *const u8, std::mem::size_of_val(&transform))}, vulkan::BufferType::UNIFORM);
-    dbg!(unsafe{std::slice::from_raw_parts(&transform as *const _ as *const u8, std::mem::size_of_val(&transform))});
 
     let descriptor_buffer_info = vk::DescriptorBufferInfo{
         buffer: uniform_buffer.get_buffer(),
@@ -122,34 +121,19 @@ fn main() {
         range: vk::WHOLE_SIZE
     };
 
-    let write_descriptor_set = vk::WriteDescriptorSet{
-        s_type: vk::StructureType::WRITE_DESCRIPTOR_SET,
-        dst_set: descriptor_set.get_set(),
-        dst_binding: vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC.as_raw() as u32,
-        dst_array_element: 0,
-        descriptor_count: 1,
-        descriptor_type: vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC,
-        p_buffer_info: &descriptor_buffer_info,
-        ..Default::default()
-    };
+    let write_set = descriptor_set.create_write_set(&vulkan::descriptor::DescriptorInfo::Buffer(std::slice::from_ref(&descriptor_buffer_info)),
+     vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC, 0, 1);
 
-    //let copy_descriptor_set = vk::CopyDescriptorSet{
-    //    s_type: vk::StructureType::COPY_DESCRIPTOR_SET,
-    //    src_set: descriptor_set.get_set(),
-    //    src_binding: vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC.as_raw() as u32,
-    //    src_array_element: 0,
-
-    //    dst_set: descriptor_set.get_set(),
-    //    dst_binding: vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC.as_raw() as u32,
-    //    dst_array_element: 0,
-    //    
-    //    descriptor_count: 1,
-    //    ..Default::default()
-    //};
 
     unsafe{
-        device!(core).update_descriptor_sets(std::slice::from_ref(&write_descriptor_set), &[]);
+        device!(core).update_descriptor_sets(std::slice::from_ref(&write_set), &[]);
     }
+
+    unsafe{
+        device!(core).reset_command_pool(command_pool.get_command_pool(), vk::CommandPoolResetFlags::empty()).expect("Failed to reset the command pool");
+    }
+
+    let mut img_1 = vulkan::Image::with_path("/i.jpg", core.get_device_mut(), &command_buffer).unwrap();
 
     while !window.get_window_handle().should_close() {
         unsafe{
@@ -257,6 +241,7 @@ fn main() {
 
     unsafe{device!(core).device_wait_idle()}.expect("Failed to device wait idle");
 
+    img_1.destroy(core.get_device());
     uniform_buffer.destroy(core.get_device());
     vertex_buffer.destroy(core.get_device());
     index_buffer.destroy(core.get_device());

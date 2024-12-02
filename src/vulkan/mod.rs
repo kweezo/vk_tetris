@@ -24,3 +24,6 @@ pub use buffer::Buffer;
 pub use buffer::BufferType;
 
 pub mod descriptor;
+
+pub mod image;
+pub use image::Image;

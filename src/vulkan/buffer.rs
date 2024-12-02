@@ -17,7 +17,7 @@ pub struct Buffer{
 
 impl Buffer{
 
-    fn create_buffer(device: &core::Device, size: usize, usage: vk::BufferUsageFlags, required_flags: vk::MemoryPropertyFlags, preferred_flags: vk::MemoryPropertyFlags) -> (vk::Buffer, vk_mem::Allocation){
+    pub fn create_buffer(device: &core::Device, size: usize, usage: vk::BufferUsageFlags, required_flags: vk::MemoryPropertyFlags, preferred_flags: vk::MemoryPropertyFlags) -> (vk::Buffer, vk_mem::Allocation){
         let buffer_info = vk::BufferCreateInfo{
             s_type: vk::StructureType::BUFFER_CREATE_INFO,
             size: size as u64,
@@ -40,7 +40,7 @@ impl Buffer{
         (buffer, allocation)
     }
 
-    fn setup_staging_buffer(device: &core::Device, data: &[u8]) -> (vk::Buffer, vk_mem::Allocation){
+    pub fn setup_staging_buffer(device: &core::Device, data: &[u8]) -> (vk::Buffer, vk_mem::Allocation){
         let (buffer, allocation) = Buffer::create_buffer(device, data.len(), vk::BufferUsageFlags::TRANSFER_SRC,
          vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT/*because life is too short for this shit*/, vk::MemoryPropertyFlags::empty());
 

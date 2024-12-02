@@ -3,22 +3,19 @@ use super::*;
 use super::super::*;
 
 
-pub enum DescriptorInfo{
-    Image(Vec<vk::DescriptorImageInfo>),
-    Buffer(Vec<vk::DescriptorBufferInfo>),
-    BufferView(Vec<vk::BufferView>),
+pub enum DescriptorInfo<'a>{
+    Image(&'a[vk::DescriptorImageInfo]),
+    Buffer(&'a[vk::DescriptorBufferInfo]),
+    BufferView(&'a[vk::BufferView]),
 }
 
 pub struct DescriptorSet{
     set: vk::DescriptorSet,
     layout: DescriptorSetLayout,
     pool: DescriptorPool,
-
-    descriptor_infos: Vec<DescriptorInfo>,
-    write_sets: Vec<vk::WriteDescriptorSet>,
 }
 
-impl <'a>DescriptorSet{
+impl DescriptorSet{
     pub fn new(device: &core::Device, binding_sizes: &[(vk::DescriptorType, u32)]) -> DescriptorSet{
         let layout = DescriptorSetLayout::new(device, binding_sizes);
         let pool = DescriptorPool::new(device, binding_sizes);
@@ -33,10 +30,10 @@ impl <'a>DescriptorSet{
 
         let set = unsafe{device.get_ash_device().allocate_descriptor_sets(&allocate_info)}.expect("Failed to allocate the descriptor set")[0];
 
-        DescriptorSet { set: set, layout: layout, pool: pool, write_sets: Vec::new(), descriptor_infos: Vec::new()}
+        DescriptorSet { set: set, layout: layout, pool: pool}
     }
 
-    pub fn add_write(&mut self, info: DescriptorInfo, descriptor_type: vk::DescriptorType, array_element: u32, count: u32){
+    pub fn create_write_set(&self, info: &DescriptorInfo, descriptor_type: vk::DescriptorType, array_element: u32, count: u32) -> vk::WriteDescriptorSet{
         let mut write_set = vk::WriteDescriptorSet{
             s_type: vk::StructureType::WRITE_DESCRIPTOR_SET,
             dst_set: self.set,
@@ -56,14 +53,11 @@ impl <'a>DescriptorSet{
             DescriptorInfo::BufferView(buffer_view_info) => write_set.p_texel_buffer_view = buffer_view_info.as_ptr()
         }
 
-        self.write_sets.push(write_set); 
-        self.descriptor_infos.push(info);
+        write_set
     }
 
-    pub fn update(&mut self, device: &core::Device){
-        unsafe{device.get_ash_device().update_descriptor_sets(&self.write_sets.as_slice(), &[])};
-
-        self.write_sets.clear();
+    pub fn update(&self, device: &core::Device, write_sets: &[vk::WriteDescriptorSet]){
+        unsafe{device.get_ash_device().update_descriptor_sets(write_sets, &[])};
     }
 
     pub fn get_layout(&self) -> vk::DescriptorSetLayout{
