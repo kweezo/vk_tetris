@@ -133,7 +133,8 @@ fn main() {
         device!(core).reset_command_pool(command_pool.get_command_pool(), vk::CommandPoolResetFlags::empty()).expect("Failed to reset the command pool");
     }
 
-    let mut img_1 = vulkan::Image::with_path("/i.jpg", core.get_device_mut(), &command_buffer).unwrap();
+    let mut img_1 = vulkan::Image::with_path("i.png", core.get_device_mut(), &command_buffer).unwrap();
+
 
     while !window.get_window_handle().should_close() {
         unsafe{

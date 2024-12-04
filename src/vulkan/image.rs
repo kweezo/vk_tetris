@@ -1,7 +1,7 @@
 use ash::vk;
 use vk_mem::Alloc;
 use super::{core::*, *};
-use ::image::{ImageReader, ImageFormat};
+use ::image::open;
 
 pub struct Image{
     image: vk::Image,
@@ -19,24 +19,17 @@ impl Image{
 
     pub fn with_path(path: &str, device: &mut Device, commad_buffer: &CommandBuffer) -> Option<Image>{
         let image =
-        match ImageReader::open("path"){
-            Ok(img) => match img.decode(){
-                Ok(img) => img,
-                Err(e) => {
-                    eprintln!("WARNING: Failed to decode image {path}, because {e}");
-                    return None;
-                }
-            },
+        match open(path){
+            Ok(img) => img.into_rgba8(),
             Err(e) =>  {
                 eprintln!("WARNING: Failed to open image {path}, because {e}");
                 return None;
             }
         };
 
-        let mut data = Vec::new();
-        image.write_to(&mut std::io::Cursor::new(&mut data), ImageFormat::Png).expect("Failed to write image to buffer");
+        let data = unsafe{std::slice::from_raw_parts(image.as_ptr(), (image.width() * image.height() * 4) as usize)};
 
-        Some(Image::new(device, data.as_slice(), image.width(), image.height(), commad_buffer))
+        Some(Image::new(device, data, image.width(), image.height(), commad_buffer))
     }
 
     fn create_image(device: &mut Device, width: u32, height: u32) -> (vk::Image, vk_mem::Allocation){
@@ -75,8 +68,7 @@ impl Image{
     }
 
     fn copy_data_to_image(device: &mut Device, image: vk::Image, commad_buffer: &CommandBuffer, data: &[u8], width: u32, height: u32){
-        let (staging_buffer, staging_allocation) = Buffer::setup_staging_buffer(&device, data);
-
+        let (staging_buffer, _staging_allocation) = Buffer::setup_staging_buffer(&device, data);
 
         let region =  vk::BufferImageCopy{
             buffer_offset: 0,
@@ -111,6 +103,10 @@ impl Image{
             device.get_ash_device().wait_for_fences(std::slice::from_ref(&fence.get_fence()), true, std::u64::MAX).expect("Failed to wait for the command update buffer submission");
         }
         
+    }
+
+    fn transition_layout(image: vk::Image, old_layout: vk::ImageLayout, new_layout: vk::ImageLayout, aspect_mask: vk::ImageAspectFlags){
+
     }
 
     pub fn destroy(&mut self, device: &Device){
