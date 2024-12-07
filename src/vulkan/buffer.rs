@@ -17,7 +17,8 @@ pub struct Buffer{
 
 impl Buffer{
 
-    pub fn create_buffer(device: &core::Device, size: usize, usage: vk::BufferUsageFlags, required_flags: vk::MemoryPropertyFlags, preferred_flags: vk::MemoryPropertyFlags) -> (vk::Buffer, vk_mem::Allocation){
+    pub fn create_buffer(device: &core::Device, size: usize, usage: vk::BufferUsageFlags, required_flags: vk::MemoryPropertyFlags, preferred_flags: vk::MemoryPropertyFlags,
+    vma_flags: vk_mem::AllocationCreateFlags) -> (vk::Buffer, vk_mem::Allocation){
         let buffer_info = vk::BufferCreateInfo{
             s_type: vk::StructureType::BUFFER_CREATE_INFO,
             size: size as u64,
@@ -27,6 +28,7 @@ impl Buffer{
         };
 
         let allocation_info = vk_mem::AllocationCreateInfo{
+            flags: vma_flags,
             usage: vk_mem::MemoryUsage::Auto,
             preferred_flags: preferred_flags,
             required_flags: required_flags,
@@ -40,60 +42,43 @@ impl Buffer{
         (buffer, allocation)
     }
 
-    pub fn setup_staging_buffer(device: &core::Device, data: &[u8]) -> (vk::Buffer, vk_mem::Allocation){
-        let (buffer, allocation) = Buffer::create_buffer(device, data.len(), vk::BufferUsageFlags::TRANSFER_SRC,
-         vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT/*because life is too short for this shit*/, vk::MemoryPropertyFlags::empty());
+
+    pub fn setup_staging_buffer(device: &core::Device, data: &[u8]) -> (vk::Buffer, vk_mem::Allocation, u64){
+        let (buffer, mut allocation) = Buffer::create_buffer(device, data.len(), vk::BufferUsageFlags::TRANSFER_SRC,
+         vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT/*because life is too short for this shit*/, vk::MemoryPropertyFlags::empty(),
+        vk_mem::AllocationCreateFlags::HOST_ACCESS_SEQUENTIAL_WRITE);
 
         let allocation_info = device.get_allocator().get_allocation_info(&allocation);
 
-        let ptr = unsafe{device.get_ash_device().map_memory(allocation_info.device_memory, 0, data.len() as u64, vk::MemoryMapFlags::empty())}.expect("Failed to map device memory");
-
         unsafe{
-            std::ptr::copy(data.as_ptr(), ptr as *mut u8,  data.len());
+        let ptr = device.get_allocator().map_memory(&mut allocation).expect("Failed to map device memory");
+       
+            std::ptr::copy(data.as_ptr(), ptr,  data.len());
+            device.get_allocator().unmap_memory(&mut allocation);
+
         }
 
-        unsafe{device.get_ash_device().unmap_memory(allocation_info.device_memory)};
-
-        (buffer, allocation)
+        (buffer, allocation, allocation_info.offset)
     }
 
-    fn upload_data_to_buffer(device: &mut core::Device, buffer: vk::Buffer, command_buffer: &CommandBuffer, data: &[u8]){
-        let (staging_buffer, mut staging_allocation) = Buffer::setup_staging_buffer(device, data);
+    fn upload_data_to_buffer(device: &mut core::Device, buffer: vk::Buffer, command_buffer: &mut CommandBuffer, data: &[u8]){
+        let (staging_buffer, staging_allocation, offset) = Buffer::setup_staging_buffer(device, data);
 
-        let region =  vk::BufferCopy{
+        let region = vk::BufferCopy{
             src_offset: 0,
             dst_offset: 0,
             size: data.len() as u64
         };
 
-        command_buffer.begin(device);
 
         unsafe{
-           device.get_ash_device().cmd_copy_buffer(command_buffer.get_command_buffer(), staging_buffer, buffer, std::slice::from_ref(&region));
+           device.get_ash_device().cmd_copy_buffer(command_buffer.get_command_buffer(), staging_buffer, buffer, &[region]);
         }
 
-        command_buffer.end(device);
-
-        let submit_info = vk::SubmitInfo{
-            s_type: vk::StructureType::SUBMIT_INFO,
-            command_buffer_count: 1,
-            p_command_buffers: &command_buffer.get_command_buffer(),
-            ..Default::default()
-        };
-
-        let fence = Fence::new(device, false);
-
-        unsafe{
-            let queue = device.get_queue();
-
-            device.get_ash_device().queue_submit(queue, std::slice::from_ref(&submit_info), fence.get_fence()).expect("Failed to submit a command buffer update command");
-            device.get_ash_device().wait_for_fences(std::slice::from_ref(&fence.get_fence()), true, std::u64::MAX).expect("Failed to wait for the command update buffer submission");
-        }
-
-        unsafe{device.get_allocator().destroy_buffer(staging_buffer, &mut staging_allocation)};
+        command_buffer.add_to_cleanup_list(staging_buffer, staging_allocation);
     }
 
-    pub fn new(device: &mut core::Device, command_buffer: &CommandBuffer, data: &[u8], buffer_type: BufferType) -> Buffer{
+    pub fn new(device: &mut core::Device, command_buffer: &mut CommandBuffer, data: &[u8], buffer_type: BufferType) -> Buffer{
 
         let buffer_usage = match buffer_type{
             BufferType::VERTEX => vk::BufferUsageFlags::VERTEX_BUFFER,
@@ -102,7 +87,7 @@ impl Buffer{
         };
 
         let (buffer, allocation) = Buffer::create_buffer(device, data.len(), buffer_usage | vk::BufferUsageFlags::TRANSFER_DST,
-         vk::MemoryPropertyFlags::empty(), vk::MemoryPropertyFlags::DEVICE_LOCAL);
+         vk::MemoryPropertyFlags::empty(), vk::MemoryPropertyFlags::DEVICE_LOCAL, vk_mem::AllocationCreateFlags::empty());
 
         Buffer::upload_data_to_buffer(device, buffer, command_buffer, data);
 
@@ -110,7 +95,7 @@ impl Buffer{
         Buffer{buffer: buffer, allocation: allocation, size: data.len() as u64}
     }
 
-    pub fn update(&self, device: &mut core::Device, command_buffer: &CommandBuffer, data: &[u8]){
+    pub fn update(&self, device: &mut core::Device, command_buffer: &mut CommandBuffer, data: &[u8]){
         if data.len() != self.size as usize{
             eprintln!("WARNING: Trying to update buffer but the data provided is a different size");
         }

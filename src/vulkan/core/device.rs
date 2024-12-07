@@ -1,6 +1,6 @@
 use ash::vk::{self, DeviceQueueCreateInfo, MAX_EXTENSION_NAME_SIZE};
 use serde::Deserialize;
-use std::{ffi::CString, fs, os::raw::c_void};
+use std::{cell::RefCell, ffi::CString, fs, os::raw::c_void};
 
 #[derive(Deserialize, Debug)]
 struct Config {
@@ -13,7 +13,7 @@ pub struct Device {
     physical_device: vk::PhysicalDevice,
     queue_family_index: u32,
     queues: Vec<ash::vk::Queue>,
-    curr_queue_index: u32,
+    curr_queue_index: RefCell<u32>,
 
     allocator: vk_mem::Allocator
 }
@@ -228,7 +228,7 @@ impl Device {
             physical_device: physical_device,
             queue_family_index: queue_family_index,
             queues: queues,
-            curr_queue_index: 0,
+            curr_queue_index: RefCell::new(0),
             allocator: allocator,
         }
     }
@@ -249,9 +249,10 @@ impl Device {
         self.queue_family_index
     }
 
-    pub fn get_queue(&mut self) -> ash::vk::Queue {
-        let queue = self.queues[self.curr_queue_index as usize];
-        self.curr_queue_index = (self.curr_queue_index + 1) % self.queues.len() as u32;
+    pub fn get_queue(&self) -> ash::vk::Queue {
+        let queue = self.queues[*self.curr_queue_index.borrow() as usize];
+        let queue_index = *self.curr_queue_index.borrow();
+        *self.curr_queue_index.borrow_mut() = (queue_index + 1) % self.queues.len() as u32;
         queue
     }
 

@@ -1,6 +1,8 @@
 #![allow(dead_code)]
 
 mod window;
+use std::u64;
+
 use ash::vk;
 use window::*;
 
@@ -67,11 +69,11 @@ fn main() {
         ..Default::default()
     };
 
-    let binding_size = (vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC, 1);
-    let descriptor_set = vulkan::descriptor::DescriptorSet::new(core.get_device(), std::slice::from_ref(&binding_size));
+    let binding_sizes = &[(vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC, 1), (vk::DescriptorType::COMBINED_IMAGE_SAMPLER, 1)];
+    let descriptor_set = vulkan::descriptor::DescriptorSet::new(core.get_device(), binding_sizes);
 
     let command_pool = vulkan::CommandPool::new(core.get_device(), core.get_device().get_queue_family_index(), vk::CommandPoolCreateFlags::empty());
-    let command_buffer = vulkan::CommandBuffer::new(core.get_device(), &command_pool);
+    let mut command_buffer = vulkan::CommandBuffer::new(core.get_device(), &command_pool);
     let render_pass = vulkan::RenderPass::new(core.get_device(), &shader, &core.get_swapchain(),
      &vertex_input_state, descriptor_set.get_layout());
 
@@ -101,39 +103,54 @@ fn main() {
         _padding2: [0; 8]
     };
 
-    let mut vertex_buffer = vulkan::Buffer::new(core.get_device_mut(), &command_buffer, bytes_of(&vertex_data), vulkan::BufferType::VERTEX);
+    command_buffer.begin(core.get_device());
 
-    unsafe{
-        device!(core).reset_command_pool(command_pool.get_command_pool(), vk::CommandPoolResetFlags::empty()).expect("Failed to reset the command pool");
-    }
-    let mut index_buffer = vulkan::Buffer::new(core.get_device_mut(), &command_buffer, bytes_of(&index_data), vulkan::BufferType::INDEX);
+    let mut vertex_buffer = vulkan::Buffer::new(core.get_device_mut(), &mut command_buffer, bytes_of(&vertex_data), vulkan::BufferType::VERTEX);
 
-    unsafe{
-        device!(core).reset_command_pool(command_pool.get_command_pool(), vk::CommandPoolResetFlags::empty()).expect("Failed to reset the command pool");
-    }
-     
+    let mut index_buffer = vulkan::Buffer::new(core.get_device_mut(), &mut command_buffer, bytes_of(&index_data), vulkan::BufferType::INDEX);
+
     
-    let mut uniform_buffer = vulkan::Buffer::new(core.get_device_mut(), &command_buffer, unsafe{std::slice::from_raw_parts(&transform as *const _ as *const u8, std::mem::size_of_val(&transform))}, vulkan::BufferType::UNIFORM);
+    let mut uniform_buffer = vulkan::Buffer::new(core.get_device_mut(), &mut command_buffer, unsafe{std::slice::from_raw_parts(&transform as *const _ as *const u8, std::mem::size_of_val(&transform))}, vulkan::BufferType::UNIFORM);
+
+
+    let mut tex_1 = vulkan::Texture::new("i.png", core.get_device_mut(), &mut command_buffer).unwrap();
+
+    command_buffer.end(core.get_device());
+
+
+    let setup_fence = vulkan::Fence::new(core.get_device(), false);
+
+    vulkan::CommandBuffer::submit(&core.get_device_mut(), std::slice::from_ref(&command_buffer), &[], &[], &setup_fence);
+
+    unsafe{core.get_device().get_ash_device().wait_for_fences(std::slice::from_ref(&setup_fence.get_fence()), true, u64::MAX)}
+     .expect("Failed to wait for the setup fence");
+
+    command_buffer.cleanup(core.get_device());
+
 
     let descriptor_buffer_info = vk::DescriptorBufferInfo{
         buffer: uniform_buffer.get_buffer(),
         offset: 0,
         range: vk::WHOLE_SIZE
     };
+    
 
-    let write_set = descriptor_set.create_write_set(&vulkan::descriptor::DescriptorInfo::Buffer(std::slice::from_ref(&descriptor_buffer_info)),
-     vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC, 0, 1);
+    let descriptor_image_info = vk::DescriptorImageInfo{
+        image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+        image_view: tex_1.get_image_view(),
+        sampler: tex_1.get_sampler()
+    };
+
+    let write_sets = &[descriptor_set.create_write_set(&vulkan::descriptor::DescriptorInfo::Buffer(std::slice::from_ref(&descriptor_buffer_info)),
+     vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC, 0, 1),
+                                                    descriptor_set.create_write_set(&vulkan::descriptor::DescriptorInfo::Image(std::slice::from_ref(&descriptor_image_info)),
+                                                     vk::DescriptorType::COMBINED_IMAGE_SAMPLER, 0, 1)];
 
 
     unsafe{
-        device!(core).update_descriptor_sets(std::slice::from_ref(&write_set), &[]);
+        device!(core).update_descriptor_sets(write_sets, &[]);
     }
 
-    unsafe{
-        device!(core).reset_command_pool(command_pool.get_command_pool(), vk::CommandPoolResetFlags::empty()).expect("Failed to reset the command pool");
-    }
-
-    let mut img_1 = vulkan::Image::with_path("i.png", core.get_device_mut(), &command_buffer).unwrap();
 
 
     while !window.get_window_handle().should_close() {
@@ -215,7 +232,7 @@ fn main() {
             };
 
 
-            let queue = &mut core.get_device_mut().get_queue();
+            let queue = &core.get_device_mut().get_queue();
 
             device!(core).queue_submit(*queue, std::slice::from_ref(&submit_info), vk::Fence::null())
             .expect("Failed to submit the command buffer");
@@ -242,7 +259,7 @@ fn main() {
 
     unsafe{device!(core).device_wait_idle()}.expect("Failed to device wait idle");
 
-    img_1.destroy(core.get_device());
+    tex_1.destroy(core.get_device());
     uniform_buffer.destroy(core.get_device());
     vertex_buffer.destroy(core.get_device());
     index_buffer.destroy(core.get_device());

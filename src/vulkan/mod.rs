@@ -27,3 +27,6 @@ pub mod descriptor;
 
 pub mod image;
 pub use image::Image;
+
+pub mod texture;
+pub use texture::Texture;

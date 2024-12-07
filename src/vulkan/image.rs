@@ -1,7 +1,6 @@
 use ash::vk;
 use vk_mem::Alloc;
 use super::{core::*, *};
-use ::image::open;
 
 pub struct Image{
     image: vk::Image,
@@ -9,7 +8,7 @@ pub struct Image{
 }
 
 impl Image{
-    pub fn new(device: &mut Device, data: &[u8], width: u32, height: u32, commad_buffer: &CommandBuffer) -> Image{
+    pub fn new(device: &mut Device, data: &[u8], width: u32, height: u32, commad_buffer: &mut CommandBuffer) -> Image{
         let (image, allocation) = Image::create_image(device, width, height);
 
         Image::copy_data_to_image(device, image, commad_buffer, data, width, height);
@@ -17,20 +16,7 @@ impl Image{
         Image { image: image, allocation: allocation }
     }
 
-    pub fn with_path(path: &str, device: &mut Device, commad_buffer: &CommandBuffer) -> Option<Image>{
-        let image =
-        match open(path){
-            Ok(img) => img.into_rgba8(),
-            Err(e) =>  {
-                eprintln!("WARNING: Failed to open image {path}, because {e}");
-                return None;
-            }
-        };
-
-        let data = unsafe{std::slice::from_raw_parts(image.as_ptr(), (image.width() * image.height() * 4) as usize)};
-
-        Some(Image::new(device, data, image.width(), image.height(), commad_buffer))
-    }
+    
 
     fn create_image(device: &mut Device, width: u32, height: u32) -> (vk::Image, vk_mem::Allocation){
         let image_info = vk::ImageCreateInfo{
@@ -67,8 +53,8 @@ impl Image{
        (image, allocation)
     }
 
-    fn copy_data_to_image(device: &mut Device, image: vk::Image, commad_buffer: &CommandBuffer, data: &[u8], width: u32, height: u32){
-        let (staging_buffer, _staging_allocation) = Buffer::setup_staging_buffer(&device, data);
+    fn copy_data_to_image(device: &mut Device, image: vk::Image, commad_buffer: &mut CommandBuffer, data: &[u8], width: u32, height: u32){
+        let (staging_buffer, staging_allocation, offset) = Buffer::setup_staging_buffer(&device, data);
 
         let region =  vk::BufferImageCopy{
             buffer_offset: 0,
@@ -79,34 +65,46 @@ impl Image{
             ..Default::default()
         };
 
-        commad_buffer.begin(device);
+        Image::transition_layout(device, commad_buffer, image, vk::ImageLayout::UNDEFINED, vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+             vk::AccessFlags::NONE, vk::AccessFlags::TRANSFER_WRITE, vk::ImageAspectFlags::COLOR, vk::PipelineStageFlags::TOP_OF_PIPE,
+              vk::PipelineStageFlags::TRANSFER);
 
         unsafe{
-           device.get_ash_device().cmd_copy_buffer_to_image(commad_buffer.get_command_buffer(), staging_buffer, image, vk::ImageLayout::TRANSFER_DST_OPTIMAL, std::slice::from_ref(&region));
+           device.get_ash_device().cmd_copy_buffer_to_image(commad_buffer.get_command_buffer(), staging_buffer, image, vk::ImageLayout::TRANSFER_DST_OPTIMAL, &[region]);
         }
 
-        commad_buffer.end(device);
+        Image::transition_layout(device, commad_buffer, image, vk::ImageLayout::TRANSFER_DST_OPTIMAL, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+             vk::AccessFlags::TRANSFER_WRITE, vk::AccessFlags::NONE, vk::ImageAspectFlags::COLOR, vk::PipelineStageFlags::TRANSFER,
+              vk::PipelineStageFlags::FRAGMENT_SHADER);
 
-        let submit_info = vk::SubmitInfo{
-            s_type: vk::StructureType::SUBMIT_INFO,
-            command_buffer_count: 1,
-            p_command_buffers: &commad_buffer.get_command_buffer(),
+
+        commad_buffer.add_to_cleanup_list(staging_buffer, staging_allocation);
+    }
+
+    fn transition_layout(device: &Device, commad_buffer: &CommandBuffer, image: vk::Image, old_layout: vk::ImageLayout, new_layout: vk::ImageLayout,
+         src_access: vk::AccessFlags, dst_access: vk::AccessFlags, aspect_mask: vk::ImageAspectFlags, src_stage: vk::PipelineStageFlags, dst_stage: vk::PipelineStageFlags){
+
+        let image_barrier = vk::ImageMemoryBarrier{
+            s_type: vk::StructureType::IMAGE_MEMORY_BARRIER,
+            src_access_mask: src_access,
+            dst_access_mask: dst_access,
+            old_layout: old_layout,
+            new_layout: new_layout,
+
+            image: image,
+
+            subresource_range: vk::ImageSubresourceRange{layer_count: 1, level_count: 1, base_array_layer: 0, base_mip_level: 0, aspect_mask: aspect_mask},
+
             ..Default::default()
         };
 
-        let fence = Fence::new(device, false);
-
-        unsafe{
-            let queue = device.get_queue();
-
-            device.get_ash_device().queue_submit(queue, std::slice::from_ref(&submit_info), fence.get_fence()).expect("Failed to submit a command buffer update command");
-            device.get_ash_device().wait_for_fences(std::slice::from_ref(&fence.get_fence()), true, std::u64::MAX).expect("Failed to wait for the command update buffer submission");
-        }
-        
+        unsafe{device.get_ash_device().cmd_pipeline_barrier(commad_buffer.get_command_buffer(),
+         src_stage, dst_stage,
+          vk::DependencyFlags::empty(), &[], &[], &[image_barrier])};
     }
 
-    fn transition_layout(image: vk::Image, old_layout: vk::ImageLayout, new_layout: vk::ImageLayout, aspect_mask: vk::ImageAspectFlags){
-
+    pub fn get_image(&self) -> vk::Image{
+        self.image
     }
 
     pub fn destroy(&mut self, device: &Device){
