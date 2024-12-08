@@ -52,8 +52,8 @@ impl CommandBuffer {
         .expect("Failed to end the command buffer");
     }
 
-    pub fn submit(device: &Device, command_buffers: &[CommandBuffer], wait_semaphores: &[(Semaphore, vk::PipelineStageFlags)], signal_semaphores: &[Semaphore],
-     fence: &Fence){
+    pub fn submit(device: &Device, command_buffers: &[&CommandBuffer], wait_semaphores: &[(&Semaphore, vk::PipelineStageFlags)], signal_semaphores: &[&Semaphore],
+     fence: vk::Fence){
         let mut command_buffer_handles = Vec::<vk::CommandBuffer>::with_capacity(command_buffers.len()); 
 
         for buffer in command_buffers{
@@ -90,7 +90,7 @@ impl CommandBuffer {
             ..Default::default() 
         };
 
-        unsafe{device.get_ash_device().queue_submit(device.get_queue(), std::slice::from_ref(&submit_info), fence.get_fence())}.expect("Failed to submit command buffers");
+        unsafe{device.get_ash_device().queue_submit(device.get_queue(), std::slice::from_ref(&submit_info), fence)}.expect("Failed to submit command buffers");
     }
 
     pub fn add_to_cleanup_list(&mut self, buffer: vk::Buffer, allocation: vk_mem::Allocation){

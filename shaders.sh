@@ -1,4 +1,4 @@
 #!./bash
 
-glslc shaders/triangle.vert -o shaders/bin/triangle_vert.spv
-glslc shaders/triangle.frag -o shaders/bin/triangle_frag.spv
+glslc shaders/tetromino.vert -o shaders/bin/tetromino_vert.spv
+glslc shaders/tetromino.frag -o shaders/bin/tetromino_frag.spv

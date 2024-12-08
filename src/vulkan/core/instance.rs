@@ -18,8 +18,6 @@ unsafe extern "system" fn vulkan_debug_utils_callback(
     let message = CStr::from_ptr((*p_callback_data).p_message);
     eprintln!("{:?}", message);
     panic!("everythings gone to shit lmfao");
-
-    vk::FALSE
 }
 
 

@@ -8,7 +8,7 @@ pub struct Image{
 }
 
 impl Image{
-    pub fn new(device: &mut Device, data: &[u8], width: u32, height: u32, commad_buffer: &mut CommandBuffer) -> Image{
+    pub fn new(device: &Device, data: &[u8], width: u32, height: u32, commad_buffer: &mut CommandBuffer) -> Image{
         let (image, allocation) = Image::create_image(device, width, height);
 
         Image::copy_data_to_image(device, image, commad_buffer, data, width, height);
@@ -18,7 +18,7 @@ impl Image{
 
     
 
-    fn create_image(device: &mut Device, width: u32, height: u32) -> (vk::Image, vk_mem::Allocation){
+    fn create_image(device: &Device, width: u32, height: u32) -> (vk::Image, vk_mem::Allocation){
         let image_info = vk::ImageCreateInfo{
             s_type: vk::StructureType::IMAGE_CREATE_INFO,
             image_type: vk::ImageType::TYPE_2D,
@@ -53,8 +53,8 @@ impl Image{
        (image, allocation)
     }
 
-    fn copy_data_to_image(device: &mut Device, image: vk::Image, commad_buffer: &mut CommandBuffer, data: &[u8], width: u32, height: u32){
-        let (staging_buffer, staging_allocation, offset) = Buffer::setup_staging_buffer(&device, data);
+    fn copy_data_to_image(device: &Device, image: vk::Image, commad_buffer: &mut CommandBuffer, data: &[u8], width: u32, height: u32){
+        let (staging_buffer, staging_allocation) = Buffer::setup_staging_buffer(&device, data);
 
         let region =  vk::BufferImageCopy{
             buffer_offset: 0,

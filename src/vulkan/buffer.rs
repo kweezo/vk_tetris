@@ -10,9 +10,13 @@ pub enum BufferType{
 }
 
 pub struct Buffer{
+
     buffer: vk::Buffer,
     allocation: vk_mem::Allocation,
-    size: u64
+    size: u64,
+
+    persistent_staging_buffer: bool,
+    staging_buffer: Option<(vk::Buffer, vk_mem::Allocation)>
 }
 
 impl Buffer{
@@ -43,12 +47,10 @@ impl Buffer{
     }
 
 
-    pub fn setup_staging_buffer(device: &core::Device, data: &[u8]) -> (vk::Buffer, vk_mem::Allocation, u64){
+    pub fn setup_staging_buffer(device: &core::Device, data: &[u8]) -> (vk::Buffer, vk_mem::Allocation){
         let (buffer, mut allocation) = Buffer::create_buffer(device, data.len(), vk::BufferUsageFlags::TRANSFER_SRC,
          vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT/*because life is too short for this shit*/, vk::MemoryPropertyFlags::empty(),
         vk_mem::AllocationCreateFlags::HOST_ACCESS_SEQUENTIAL_WRITE);
-
-        let allocation_info = device.get_allocator().get_allocation_info(&allocation);
 
         unsafe{
         let ptr = device.get_allocator().map_memory(&mut allocation).expect("Failed to map device memory");
@@ -58,12 +60,10 @@ impl Buffer{
 
         }
 
-        (buffer, allocation, allocation_info.offset)
+        (buffer, allocation)
     }
 
-    fn upload_data_to_buffer(device: &mut core::Device, buffer: vk::Buffer, command_buffer: &mut CommandBuffer, data: &[u8]){
-        let (staging_buffer, staging_allocation, offset) = Buffer::setup_staging_buffer(device, data);
-
+    fn upload_data_to_buffer(device: &core::Device, buffer: vk::Buffer, staging_buffer: vk::Buffer, staging_allocation: vk_mem::Allocation, command_buffer: &mut CommandBuffer, data: &[u8], persistent_staging_buffer: bool) -> Option<vk_mem::Allocation>{
         let region = vk::BufferCopy{
             src_offset: 0,
             dst_offset: 0,
@@ -75,10 +75,16 @@ impl Buffer{
            device.get_ash_device().cmd_copy_buffer(command_buffer.get_command_buffer(), staging_buffer, buffer, &[region]);
         }
 
-        command_buffer.add_to_cleanup_list(staging_buffer, staging_allocation);
+
+        if !persistent_staging_buffer{
+            command_buffer.add_to_cleanup_list(staging_buffer, staging_allocation);
+            return None;
+        }
+
+        Some(staging_allocation)
     }
 
-    pub fn new(device: &mut core::Device, command_buffer: &mut CommandBuffer, data: &[u8], buffer_type: BufferType) -> Buffer{
+    pub fn new(device: &core::Device, command_buffer: &mut CommandBuffer, data: &[u8], buffer_type: BufferType, persistent_staging_buffer: bool) -> Buffer{
 
         let buffer_usage = match buffer_type{
             BufferType::VERTEX => vk::BufferUsageFlags::VERTEX_BUFFER,
@@ -89,18 +95,30 @@ impl Buffer{
         let (buffer, allocation) = Buffer::create_buffer(device, data.len(), buffer_usage | vk::BufferUsageFlags::TRANSFER_DST,
          vk::MemoryPropertyFlags::empty(), vk::MemoryPropertyFlags::DEVICE_LOCAL, vk_mem::AllocationCreateFlags::empty());
 
-        Buffer::upload_data_to_buffer(device, buffer, command_buffer, data);
+        let (staging_buffer, mut staging_allocation) = Buffer::setup_staging_buffer(device, data);
 
+        if persistent_staging_buffer{
+            staging_allocation = Buffer::upload_data_to_buffer(device, buffer, staging_buffer, staging_allocation, command_buffer, data, persistent_staging_buffer).unwrap();
+            return Buffer{buffer: buffer, allocation: allocation, size: data.len() as u64, persistent_staging_buffer: persistent_staging_buffer, staging_buffer: Some((staging_buffer, staging_allocation))};
+        }
 
-        Buffer{buffer: buffer, allocation: allocation, size: data.len() as u64}
+        Buffer{buffer: buffer, allocation: allocation, size: data.len() as u64, persistent_staging_buffer: persistent_staging_buffer, staging_buffer: None}
+
     }
 
-    pub fn update(&self, device: &mut core::Device, command_buffer: &mut CommandBuffer, data: &[u8]){
+    pub fn update(&mut self, device: &core::Device, command_buffer: &mut CommandBuffer, data: &[u8]){
         if data.len() != self.size as usize{
             eprintln!("WARNING: Trying to update buffer but the data provided is a different size");
         }
 
-        Buffer::upload_data_to_buffer(device, self.buffer, command_buffer, data);
+        if self.persistent_staging_buffer{
+            Buffer::upload_data_to_buffer(device, self.buffer, self.staging_buffer.as_ref().unwrap().0, self.staging_buffer.take().unwrap().1, command_buffer, data, true);
+            return
+        }
+
+        let (staging_buffer, staging_allocation) = Buffer::setup_staging_buffer(device, data);
+        
+        Buffer::upload_data_to_buffer(device, self.buffer, staging_buffer, staging_allocation, command_buffer, data, false);
     }
 
     pub fn get_buffer(&self) -> vk::Buffer{

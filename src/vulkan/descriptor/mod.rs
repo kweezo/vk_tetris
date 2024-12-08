@@ -8,4 +8,3 @@ pub use descriptor_set_layout::DescriptorSetLayout;
 
 mod descriptor_set;
 pub use descriptor_set::DescriptorSet;
-pub use descriptor_set::DescriptorInfo;

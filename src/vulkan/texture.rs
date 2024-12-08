@@ -10,7 +10,7 @@ pub struct Texture{
 }
 
 impl Texture{
-    pub fn new(path: &str, device: &mut Device, commad_buffer: &mut CommandBuffer) -> Option<Texture>{
+    pub fn new(path: &str, device: &Device, commad_buffer: &mut CommandBuffer) -> Option<Texture>{
         let image_raw =
         match open(path){
             Ok(img) => img.into_rgba8(),
