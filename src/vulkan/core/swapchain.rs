@@ -51,8 +51,7 @@ impl Swapchain {
         }
         .expect("Failed to get the physical device surface capabilities");
 
-        let extent;
-        if capabilities.current_extent.width
+        let extent = if capabilities.current_extent.width
             != clamp(
                 capabilities.current_extent.width,
                 capabilities.min_image_extent.width,
@@ -63,27 +62,25 @@ impl Swapchain {
                     capabilities.current_extent.height,
                     capabilities.min_image_extent.height,
                     capabilities.max_image_extent.height,
-                )
-        {
-            extent = vk::Extent2D {
+                ) {
+            vk::Extent2D {
                 width: window.get_extent().0,
                 height: window.get_extent().1,
-            };
+            }
         } else {
-            extent = capabilities.current_extent;
-        }
+            capabilities.current_extent
+        };
 
-        let image_count = if capabilities.max_image_count != 0{
-
+        let image_count = if capabilities.max_image_count != 0 {
             clamp(
                 PREFERRED_IMAGE_COUNT,
                 capabilities.min_image_count,
                 capabilities.max_image_count,
             )
-        }else{
+        } else {
             min(capabilities.min_image_count, PREFERRED_IMAGE_COUNT)
         };
-        
+
         let create_info = vk::SwapchainCreateInfoKHR {
             s_type: vk::StructureType::SWAPCHAIN_CREATE_INFO_KHR,
             surface: surface_khr,
@@ -110,11 +107,11 @@ impl Swapchain {
             .expect("Failed to create the swapchain");
 
         SwapchainInfo {
-            swapchain_device: swapchain_device,
+            swapchain_device,
             extent,
-            format: format,
-            swapchain: swapchain,
-            image_count: image_count,
+            format,
+            swapchain,
+            image_count,
         }
     }
 
@@ -131,7 +128,7 @@ impl Swapchain {
         let mut image_view_info = ash::vk::ImageViewCreateInfo {
             s_type: vk::StructureType::IMAGE_VIEW_CREATE_INFO,
             view_type: vk::ImageViewType::TYPE_2D,
-            format: format,
+            format,
             components: vk::ComponentMapping::default(),
             subresource_range: vk::ImageSubresourceRange {
                 aspect_mask: vk::ImageAspectFlags::COLOR,
@@ -194,17 +191,17 @@ impl Swapchain {
             format,
         );
         let image_views = Swapchain::create_swapchain_image_views(
-            &device,
+            device,
             &swapchain_info.swapchain_device,
             swapchain_info.swapchain,
             format.format,
         );
 
         Swapchain {
-            surface_khr: surface_khr,
-            surface_instance: surface_instance,
-            swapchain_info: swapchain_info,
-            image_views: image_views,
+            surface_khr,
+            surface_instance,
+            swapchain_info,
+            image_views,
         }
     }
 

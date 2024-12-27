@@ -19,10 +19,10 @@ impl Core {
         let swapchain = Swapchain::new(&entry, window, &instance, &mut device);
 
         Core {
-            entry: entry,
-            instance: instance,
-            device: device,
-            swapchain: swapchain,
+            entry,
+            instance,
+            device,
+            swapchain,
         }
     }
 
@@ -33,8 +33,8 @@ impl Core {
     pub fn get_device_mut(&mut self) -> &mut Device {
         &mut self.device
     }
-    
-    pub fn get_swapchain(&self) -> &Swapchain{
+
+    pub fn get_swapchain(&self) -> &Swapchain {
         &self.swapchain
     }
 }

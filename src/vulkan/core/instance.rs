@@ -1,13 +1,15 @@
 use ash::{
+    ext,
     vk::{self, MAX_EXTENSION_NAME_SIZE},
     Entry,
-    ext
 };
 use serde::Deserialize;
-use std::{ffi::{CStr, CString}, fs};
+use std::{
+    ffi::{CStr, CString},
+    fs,
+};
 
 use crate::Window;
-
 
 unsafe extern "system" fn vulkan_debug_utils_callback(
     _message_severity: vk::DebugUtilsMessageSeverityFlagsEXT,
@@ -19,7 +21,6 @@ unsafe extern "system" fn vulkan_debug_utils_callback(
     eprintln!("{:?}", message);
     panic!("everythings gone to shit lmfao");
 }
-
 
 #[derive(Deserialize, Debug)]
 struct Config {
@@ -33,7 +34,7 @@ pub struct Instance {
     vk_instance: ash::Instance,
 
     debug_messenger_instance: ext::debug_utils::Instance,
-    debug_messenger: vk::DebugUtilsMessengerEXT
+    debug_messenger: vk::DebugUtilsMessengerEXT,
 }
 
 impl Instance {
@@ -53,14 +54,13 @@ impl Instance {
 
         let mut available_extensions: Vec<CString> = Vec::new();
 
-        
         for supported_extension in &supported_extensions {
             for extension in extensions {
                 let mut optional_extension_v: Vec<i8> =
-                extension.chars().map(|c| c as i8).collect();
-                
+                    extension.chars().map(|c| c as i8).collect();
+
                 optional_extension_v.resize(MAX_EXTENSION_NAME_SIZE, 0);
-                
+
                 if supported_extension.extension_name == *optional_extension_v {
                     available_extensions.push(
                         CString::new(extension.as_str()).expect("Failed to create a new CString"),
@@ -68,7 +68,7 @@ impl Instance {
                 }
             }
         }
-        
+
         available_extensions
     }
 
@@ -122,11 +122,11 @@ impl Instance {
         let mut required_extensions_cstr: Vec<CString> =
             Instance::get_supported_extensions(entry, &glfw_extensions);
 
-
         required_extensions_cstr.sort();
         required_extensions_cstr.dedup();
-   
-        if required_extensions_cstr.len() != glfw_extensions.len(){//TODO, fix edge case where glfw_extensions and required_extensions are overlapping
+
+        if required_extensions_cstr.len() != glfw_extensions.len() {
+            //TODO, fix edge case where glfw_extensions and required_extensions are overlapping
             panic!("Error: not all required instance extensions present");
         }
 
@@ -136,7 +136,7 @@ impl Instance {
             .collect();
 
         let optional_extensions_cstr =
-            Instance::get_supported_extensions(&entry, &conf.optional_extensions);
+            Instance::get_supported_extensions(entry, &conf.optional_extensions);
 
         let optional_extensions_cstr_ptr: Vec<*const i8> = optional_extensions_cstr
             .iter()
@@ -152,18 +152,25 @@ impl Instance {
         (extensions_cstr_ptr, extensions_cstr)
     }
 
-    fn create_debug_messenger(entry: &Entry, instance: &ash::Instance) -> (vk::DebugUtilsMessengerEXT, ext::debug_utils::Instance){
-        let create_info = vk::DebugUtilsMessengerCreateInfoEXT{
+    fn create_debug_messenger(
+        entry: &Entry,
+        instance: &ash::Instance,
+    ) -> (vk::DebugUtilsMessengerEXT, ext::debug_utils::Instance) {
+        let create_info = vk::DebugUtilsMessengerCreateInfoEXT {
             s_type: vk::StructureType::DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
-            message_severity: vk::DebugUtilsMessageSeverityFlagsEXT::WARNING | vk::DebugUtilsMessageSeverityFlagsEXT::ERROR,
-            message_type: vk::DebugUtilsMessageTypeFlagsEXT::GENERAL | vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE | vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION,
+            message_severity: vk::DebugUtilsMessageSeverityFlagsEXT::WARNING
+                | vk::DebugUtilsMessageSeverityFlagsEXT::ERROR,
+            message_type: vk::DebugUtilsMessageTypeFlagsEXT::GENERAL
+                | vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE
+                | vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION,
             pfn_user_callback: Some(vulkan_debug_utils_callback),
             ..Default::default()
         };
 
         let debug_messenger_instance = ext::debug_utils::Instance::new(entry, instance);
-        let debug_messenger = unsafe{debug_messenger_instance.create_debug_utils_messenger(&create_info, None)}
-        .expect("Failed to create the debug utils messenger");
+        let debug_messenger =
+            unsafe { debug_messenger_instance.create_debug_utils_messenger(&create_info, None) }
+                .expect("Failed to create the debug utils messenger");
 
         (debug_messenger, debug_messenger_instance)
     }
@@ -172,7 +179,7 @@ impl Instance {
         let conf = Instance::load_config("conf/instance.json");
 
         let (supported_layers_cstr, unsupported_layers) = if conf.enable_layers {
-            Instance::get_supported_layers(&entry, &conf.validation_layers)
+            Instance::get_supported_layers(entry, &conf.validation_layers)
         } else {
             (Vec::new(), Vec::new())
         };
@@ -193,7 +200,7 @@ impl Instance {
         let app_name: &CStr = unsafe { std::ffi::CStr::from_bytes_with_nul_unchecked(b"tetris\0") };
 
         #[allow(deprecated)]
-        let app_info = vk::ApplicationInfo{ 
+        let app_info = vk::ApplicationInfo {
             api_version: vk::API_VERSION_1_3,
             application_version: vk::make_version(0, 0, 1),
             p_engine_name: app_name.as_ptr(),
@@ -212,13 +219,14 @@ impl Instance {
                 .expect("Failed to create a vkInstance")
         };
 
-        let (debug_messenger, debug_messenger_instance) = Instance::create_debug_messenger(entry, &instance);
+        let (debug_messenger, debug_messenger_instance) =
+            Instance::create_debug_messenger(entry, &instance);
 
         Instance {
             vk_instance: instance,
 
-            debug_messenger_instance: debug_messenger_instance,
-            debug_messenger: debug_messenger
+            debug_messenger_instance,
+            debug_messenger,
         }
     }
 

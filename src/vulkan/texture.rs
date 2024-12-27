@@ -1,37 +1,50 @@
-use ash::vk;
-use ::image::open;
-use super::*;
 use super::core::*;
+use super::*;
+use ::image::open;
+use ash::vk;
 
-pub struct Texture{
+pub struct Texture {
     image: Image,
     sampler: vk::Sampler,
-    image_view: vk::ImageView
+    image_view: vk::ImageView,
 }
 
-impl Texture{
-    pub fn new(path: &str, device: &Device, commad_buffer: &mut CommandBuffer) -> Option<Texture>{
-        let image_raw =
-        match open(path){
+impl Texture {
+    pub fn new(path: &str, device: &Device, commad_buffer: &mut CommandBuffer) -> Option<Texture> {
+        let image_raw = match open(path) {
             Ok(img) => img.into_rgba8(),
-            Err(e) =>  {
+            Err(e) => {
                 eprintln!("WARNING: Failed to open image {path}, because {e}");
                 return None;
             }
         };
 
-        let data = unsafe{std::slice::from_raw_parts(image_raw.as_ptr(), (image_raw.width() * image_raw.height() * 4) as usize)};
+        let data = unsafe {
+            std::slice::from_raw_parts(
+                image_raw.as_ptr(),
+                (image_raw.width() * image_raw.height() * 4) as usize,
+            )
+        };
 
-        let image = Image::new(device, data, image_raw.width(), image_raw.height(), commad_buffer);
+        let image = Image::new(
+            device,
+            data,
+            image_raw.width(),
+            image_raw.height(),
+            commad_buffer,
+        );
         let image_view = Texture::create_image_view(device, image.get_image());
         let sampler = Texture::create_sampler(device);
 
-        Some(Texture{image: image, sampler: sampler, image_view: image_view})
+        Some(Texture {
+            image,
+            sampler,
+            image_view,
+        })
     }
 
-
-    fn create_sampler(device: &Device) -> vk::Sampler{
-        let create_info = vk::SamplerCreateInfo{
+    fn create_sampler(device: &Device) -> vk::Sampler {
+        let create_info = vk::SamplerCreateInfo {
             s_type: vk::StructureType::SAMPLER_CREATE_INFO,
 
             mag_filter: vk::Filter::NEAREST,
@@ -50,40 +63,51 @@ impl Texture{
             ..Default::default()
         };
 
-
-        let sampler = unsafe{device.get_ash_device().create_sampler(&create_info, None)}.expect("Failed to create a sampler");
+        let sampler = unsafe { device.get_ash_device().create_sampler(&create_info, None) }
+            .expect("Failed to create a sampler");
 
         sampler
     }
 
-    fn create_image_view(device: &Device, image: vk::Image) -> vk::ImageView{
-        let create_info = vk::ImageViewCreateInfo{
+    fn create_image_view(device: &Device, image: vk::Image) -> vk::ImageView {
+        let create_info = vk::ImageViewCreateInfo {
             s_type: vk::StructureType::IMAGE_VIEW_CREATE_INFO,
 
-            image: image,
+            image,
 
             view_type: vk::ImageViewType::TYPE_2D,
             format: vk::Format::R8G8B8A8_SRGB,
             components: vk::ComponentMapping::default(),
-            subresource_range: vk::ImageSubresourceRange{aspect_mask: vk::ImageAspectFlags::COLOR, base_array_layer: 0, base_mip_level: 0, layer_count: 1, level_count: 1},
+            subresource_range: vk::ImageSubresourceRange {
+                aspect_mask: vk::ImageAspectFlags::COLOR,
+                base_array_layer: 0,
+                base_mip_level: 0,
+                layer_count: 1,
+                level_count: 1,
+            },
 
             ..Default::default()
         };
 
-        let image_view = unsafe{device.get_ash_device().create_image_view(&create_info, None)}.expect("Failed to create an image view");
+        let image_view = unsafe {
+            device
+                .get_ash_device()
+                .create_image_view(&create_info, None)
+        }
+        .expect("Failed to create an image view");
 
         image_view
     }
 
-    pub fn get_sampler(&self) -> vk::Sampler{
+    pub fn get_sampler(&self) -> vk::Sampler {
         self.sampler
     }
 
-    pub fn get_image_view(&self) -> vk::ImageView{
+    pub fn get_image_view(&self) -> vk::ImageView {
         self.image_view
     }
 
-    pub fn destroy(&mut self, device: &Device){
+    pub fn destroy(&mut self, device: &Device) {
         self.image.destroy(device);
     }
 }

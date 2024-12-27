@@ -12,12 +12,14 @@ pub struct RenderPass {
 }
 
 impl RenderPass {
-    fn create_pipeline_layout(device: &Device, set_layout: vk::DescriptorSetLayout) -> vk::PipelineLayout {
-
-        let push_constant_range = vk::PushConstantRange{
+    fn create_pipeline_layout(
+        device: &Device,
+        set_layout: vk::DescriptorSetLayout,
+    ) -> vk::PipelineLayout {
+        let push_constant_range = vk::PushConstantRange {
             stage_flags: vk::ShaderStageFlags::ALL,
             offset: 0,
-            size: 128
+            size: 128,
         };
 
         let create_info = vk::PipelineLayoutCreateInfo {
@@ -47,7 +49,7 @@ impl RenderPass {
         shader: &Shader,
         extent: vk::Extent2D,
         render_pass: vk::RenderPass,
-        pipeline_vertex_input_state: &vk::PipelineVertexInputStateCreateInfo
+        pipeline_vertex_input_state: &vk::PipelineVertexInputStateCreateInfo,
     ) -> vk::Pipeline {
         let shader_stages = shader.get_pipeline_stage_shader_info();
 
@@ -74,7 +76,7 @@ impl RenderPass {
 
         let scissor = vk::Rect2D {
             offset: vk::Offset2D { x: 0i32, y: 0i32 },
-            extent: extent,
+            extent,
         };
 
         let viewport_state = vk::PipelineViewportStateCreateInfo {
@@ -89,7 +91,7 @@ impl RenderPass {
         let rasterization_state = vk::PipelineRasterizationStateCreateInfo {
             s_type: vk::StructureType::PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
             polygon_mode: vk::PolygonMode::FILL,
-            cull_mode: vk::CullModeFlags::NONE,//TODO Why doesnt back work
+            cull_mode: vk::CullModeFlags::NONE, //TODO Why doesnt back work
             front_face: vk::FrontFace::COUNTER_CLOCKWISE,
             line_width: 1f32,
             ..Default::default()
@@ -121,7 +123,7 @@ impl RenderPass {
             ..Default::default()
         };
 
-        let dynamic_states = vec![/*vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR*/];
+        let dynamic_states = [/*vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR*/];
 
         let dynamic_state = vk::PipelineDynamicStateCreateInfo {
             s_type: vk::StructureType::PIPELINE_DYNAMIC_STATE_CREATE_INFO,
@@ -132,7 +134,7 @@ impl RenderPass {
 
         let pipeline_info = vk::GraphicsPipelineCreateInfo {
             s_type: vk::StructureType::GRAPHICS_PIPELINE_CREATE_INFO,
-            render_pass: render_pass,
+            render_pass,
             stage_count: shader_stages.len() as u32,
             p_stages: shader_stages.as_ptr(),
             p_vertex_input_state: pipeline_vertex_input_state,
@@ -144,7 +146,7 @@ impl RenderPass {
             p_depth_stencil_state: &depth_stencil_state,
             p_dynamic_state: &dynamic_state,
             p_color_blend_state: &color_blend_state,
-            layout: layout,
+            layout,
             subpass: 0,
             ..Default::default()
         };
@@ -163,7 +165,7 @@ impl RenderPass {
 
     fn create_render_pass(device: &Device, format: vk::Format) -> vk::RenderPass {
         let color_attachment = vk::AttachmentDescription {
-            format: format,
+            format,
             load_op: vk::AttachmentLoadOp::CLEAR,
             store_op: vk::AttachmentStoreOp::STORE,
             stencil_load_op: vk::AttachmentLoadOp::DONT_CARE,
@@ -222,14 +224,14 @@ impl RenderPass {
         image_count: u32,
         extent: vk::Extent2D,
         render_pass: vk::RenderPass,
-        image_views: &Vec<vk::ImageView>,
+        image_views: &[vk::ImageView],
     ) -> Vec<vk::Framebuffer> {
         let mut framebuffers = vec![vk::Framebuffer::null(); 3];
 
         for i in 0..image_count {
             let create_info = vk::FramebufferCreateInfo {
                 s_type: vk::StructureType::FRAMEBUFFER_CREATE_INFO,
-                render_pass: render_pass,
+                render_pass,
                 attachment_count: 1,
                 p_attachments: &image_views[i as usize],
                 width: extent.width,
@@ -267,7 +269,7 @@ impl RenderPass {
             shader,
             swapchain.get_swapchain_info().extent,
             render_pass,
-            pipeline_vertex_input_state
+            pipeline_vertex_input_state,
         );
 
         let framebuffers = RenderPass::create_framebuffers(
@@ -279,10 +281,10 @@ impl RenderPass {
         );
 
         RenderPass {
-            pipeline: pipeline,
+            pipeline,
             pipeline_layout: layout,
-            render_pass: render_pass,
-            framebuffers: framebuffers,
+            render_pass,
+            framebuffers,
         }
     }
 
@@ -298,7 +300,7 @@ impl RenderPass {
         self.framebuffers[index as usize]
     }
 
-    pub fn get_layout(&self) -> vk::PipelineLayout{
+    pub fn get_layout(&self) -> vk::PipelineLayout {
         self.pipeline_layout
     }
 }

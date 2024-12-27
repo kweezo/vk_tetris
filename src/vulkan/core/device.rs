@@ -1,6 +1,11 @@
 use ash::vk::{self, DeviceQueueCreateInfo, MAX_EXTENSION_NAME_SIZE};
 use serde::Deserialize;
-use std::{cell::RefCell, ffi::CString, fs, os::raw::c_void};
+use std::{
+    ffi::CString,
+    fs,
+    os::raw::c_void,
+    sync::{Arc, RwLock},
+};
 
 #[derive(Deserialize, Debug)]
 struct Config {
@@ -13,9 +18,9 @@ pub struct Device {
     physical_device: vk::PhysicalDevice,
     queue_family_index: u32,
     queues: Vec<ash::vk::Queue>,
-    curr_queue_index: RefCell<u32>,
+    curr_queue_index: RwLock<u32>,
 
-    allocator: vk_mem::Allocator
+    allocator: Arc<RwLock<Arc<vk_mem::Allocator>>>,
 }
 
 impl Device {
@@ -39,10 +44,10 @@ impl Device {
             }
         }
 
-        return match best_device {
+        match best_device {
             None => devices[0],
             Some(device) => device,
-        };
+        }
     }
 
     fn get_queue_family_index_internal(
@@ -52,9 +57,9 @@ impl Device {
         let properties =
             unsafe { instance.get_physical_device_queue_family_properties(physical_device) };
 
-        for i in 0..properties.len() {
-            if properties[i].queue_flags & vk::QueueFlags::GRAPHICS == vk::QueueFlags::GRAPHICS {
-                return (i as u32, properties[i].queue_count);
+        for i in properties.iter().enumerate() {
+            if i.1.queue_flags & vk::QueueFlags::GRAPHICS == vk::QueueFlags::GRAPHICS {
+                return (i.0 as u32, i.1.queue_count);
             }
         }
 
@@ -66,14 +71,14 @@ impl Device {
         physical_device: vk::PhysicalDevice,
         queue_family_index: u32,
         queue_count: u32,
-        extensions: &Vec<*const i8>,
+        extensions: &[*const i8],
     ) -> ash::Device {
         let queue_priorities = vec![1f32; queue_count as usize];
 
         let create_info = DeviceQueueCreateInfo {
             s_type: vk::StructureType::DEVICE_QUEUE_CREATE_INFO,
-            queue_family_index: queue_family_index,
-            queue_count: queue_count,
+            queue_family_index,
+            queue_count,
             p_queue_priorities: queue_priorities.as_ptr(),
             ..Default::default()
         };
@@ -194,12 +199,16 @@ impl Device {
         available_extensions
     }
 
-    fn create_allocator(instance: &ash::Instance, physical_device: vk::PhysicalDevice, device: &ash::Device) -> vk_mem::Allocator{
+    fn create_allocator(
+        instance: &ash::Instance,
+        physical_device: vk::PhysicalDevice,
+        device: &ash::Device,
+    ) -> vk_mem::Allocator {
         let create_info = vk_mem::AllocatorCreateInfo::new(instance, device, physical_device);
 
-        let allocator = unsafe{vk_mem::Allocator::new(create_info).expect("Failed to create a new VMA allocator")};
-
-        allocator
+        unsafe {
+            vk_mem::Allocator::new(create_info).expect("Failed to create a new VMA allocator")
+        }
     }
 
     pub fn new(instance: &ash::Instance) -> Device {
@@ -224,12 +233,12 @@ impl Device {
         let allocator = Device::create_allocator(instance, physical_device, &device);
 
         Device {
-            device: device,
-            physical_device: physical_device,
-            queue_family_index: queue_family_index,
-            queues: queues,
-            curr_queue_index: RefCell::new(0),
-            allocator: allocator,
+            device,
+            physical_device,
+            queue_family_index,
+            queues,
+            curr_queue_index: RwLock::new(0),
+            allocator: Arc::new(RwLock::new(Arc::new(allocator))),
         }
     }
 
@@ -241,19 +250,21 @@ impl Device {
         self.physical_device
     }
 
-    pub fn get_allocator(&self) -> &vk_mem::Allocator{
-        &self.allocator
-    } 
+    pub fn get_allocator(&self) -> Arc<vk_mem::Allocator> {
+        self.allocator.read().unwrap().clone()
+    }
+
+    pub fn get_allocator_lock(&self) -> Arc<RwLock<Arc<vk_mem::Allocator>>> {
+        self.allocator.clone()
+    }
 
     pub fn get_queue_family_index(&self) -> u32 {
         self.queue_family_index
     }
-
     pub fn get_queue(&self) -> ash::vk::Queue {
-        let queue = self.queues[*self.curr_queue_index.borrow() as usize];
-        let queue_index = *self.curr_queue_index.borrow();
-        *self.curr_queue_index.borrow_mut() = (queue_index + 1) % self.queues.len() as u32;
+        let queue = self.queues[*self.curr_queue_index.read().unwrap() as usize];
+        let queue_index = *self.curr_queue_index.read().unwrap();
+        *self.curr_queue_index.write().unwrap() = (queue_index + 1) % self.queues.len() as u32;
         queue
     }
-
 }

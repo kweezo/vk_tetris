@@ -1,5 +1,8 @@
+use glfw::WindowEvent;
+
 pub struct Window {
     glfw_context: glfw::Glfw,
+    events: glfw::GlfwReceiver<(f64, WindowEvent)>,
     window_handle: glfw::PWindow,
     width: u32,
     height: u32,
@@ -15,15 +18,16 @@ impl Window {
 
         context.window_hint(glfw::WindowHint::ClientApi(glfw::ClientApiHint::NoApi));
 
-        let (window, _events) = context
+        let (window, events) = context
             .create_window(width, height, title, glfw::WindowMode::Windowed)
             .expect("Failed to create a GLFW window");
 
         Window {
             glfw_context: context,
+            events,
             window_handle: window,
-            width: width,
-            height: height,
+            width,
+            height,
         }
     }
 
@@ -42,6 +46,10 @@ impl Window {
     pub fn get_glfw_context_mut(&mut self) -> &mut glfw::Glfw {
         &mut self.glfw_context
     }
+
+    pub fn get_events(&self) -> &glfw::GlfwReceiver<(f64, WindowEvent)>{
+        &self.events
+    } 
 
     pub fn get_extent(&self) -> (u32, u32) {
         (self.width, self.height)

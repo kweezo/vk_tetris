@@ -9,15 +9,13 @@ pub struct Shader {
 impl Shader {
     fn read_binary(path: String) -> Vec<u8> {
         let bytes = std::fs::read(&path);
-        let bytes_unwrapped: Vec<u8>;
-
-        match bytes {
-            Ok(val) => bytes_unwrapped = val,
+        let bytes_unwrapped: Vec<u8> = match bytes {
+            Ok(val) => val,
             Err(err) => {
                 eprintln!("Failed to open file {} because {}", &path, err);
                 return Vec::new();
             }
-        }
+        };
 
         bytes_unwrapped
     }
@@ -61,8 +59,8 @@ impl Shader {
         let (vert_module, frag_module) = Shader::create_shader_module(device, vert_path, frag_path);
 
         Shader {
-            vert_module: vert_module,
-            frag_module: frag_module,
+            vert_module,
+            frag_module,
         }
     }
 

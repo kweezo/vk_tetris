@@ -9,15 +9,21 @@ layout(push_constant) uniform pc{
     int pc_texID;
 };
 
+layout(binding = 8) uniform projection{
+    layout(row_major) mat4 proj;
+} proj; 
+
 
 layout(location = 0) out vec2 texCoords;
 layout(location = 1) out flat int texID;
 layout(location = 2) out vec3 outColor;
 
 void main() {
-    gl_Position =vec4(inVertex + inPosition, 0.0, 1.0);
+    float scale_factor = 100;
+
+    gl_Position = proj.proj * vec4((inVertex + inPosition)*scale_factor, 0.0, 1.0); 
 
     outColor = inColor;
-    texCoords = inVertex + vec2(0.5, 0.5);
+    texCoords = inVertex; 
     texID = pc_texID;
 }
