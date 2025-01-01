@@ -11,6 +11,11 @@ pub struct TransitionInfo {
     pub src_stage: vk::PipelineStageFlags,
     pub dst_stage: vk::PipelineStageFlags,
 }
+#[derive(Debug)] 
+pub enum Type {
+    SAMPLED,
+    DEPTH,
+}
 
 pub struct Image {
     image: vk::Image,
@@ -23,16 +28,29 @@ impl Image {
         data: &[u8],
         width: u32,
         height: u32,
-        commad_buffer: &mut CommandBuffer,
+        image_type: Type,
+        command_buffer: &mut CommandBuffer,
     ) -> Image {
-        let (image, allocation) = Image::create_image(device, width, height);
+        let (image, allocation) = Image::create_image(device, width, height, image_type);
 
-        Image::copy_data_to_image(device, image, commad_buffer, data, width, height);
+        Image::copy_data_to_image(device, image, command_buffer, data, width, height);
 
         Image { image, allocation }
     }
 
-    fn create_image(device: &Device, width: u32, height: u32) -> (vk::Image, vk_mem::Allocation) {
+    pub fn new_empty(device: &Device, width: u32, height: u32, image_type: Type) -> Image {
+        let (image, allocation) = Image::create_image(device, width, height, image_type);
+
+        Image { image, allocation }
+    }
+
+    fn create_image(
+        device: &Device,
+        width: u32,
+        height: u32,
+        image_type: Type,
+    ) -> (vk::Image, vk_mem::Allocation) {
+
         let image_info = vk::ImageCreateInfo {
             s_type: vk::StructureType::IMAGE_CREATE_INFO,
             image_type: vk::ImageType::TYPE_2D,
@@ -43,14 +61,22 @@ impl Image {
                 depth: 1,
             },
 
-            format: vk::Format::R8G8B8A8_SRGB,
+            format: match image_type {
+                Type::SAMPLED => vk::Format::R8G8B8A8_SRGB,
+                Type::DEPTH => vk::Format::D32_SFLOAT,
+            },
+            usage: vk::ImageUsageFlags::TRANSFER_DST
+                | match image_type {
+                    Type::SAMPLED => vk::ImageUsageFlags::SAMPLED,
+                    Type::DEPTH => vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
+                },
 
             mip_levels: 1,
             array_layers: 1,
 
             samples: vk::SampleCountFlags::TYPE_1,
+
             tiling: vk::ImageTiling::OPTIMAL,
-            usage: vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::SAMPLED,
 
             sharing_mode: vk::SharingMode::EXCLUSIVE,
 

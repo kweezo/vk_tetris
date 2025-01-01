@@ -18,9 +18,11 @@ impl Window {
 
         context.window_hint(glfw::WindowHint::ClientApi(glfw::ClientApiHint::NoApi));
 
-        let (window, events) = context
+        let (mut window, events) = context
             .create_window(width, height, title, glfw::WindowMode::Windowed)
             .expect("Failed to create a GLFW window");
+
+        window.set_key_polling(true);
 
         Window {
             glfw_context: context,
@@ -47,9 +49,9 @@ impl Window {
         &mut self.glfw_context
     }
 
-    pub fn get_events(&self) -> &glfw::GlfwReceiver<(f64, WindowEvent)>{
+    pub fn get_events(&self) -> &glfw::GlfwReceiver<(f64, WindowEvent)> {
         &self.events
-    } 
+    }
 
     pub fn get_extent(&self) -> (u32, u32) {
         (self.width, self.height)

@@ -147,3 +147,13 @@ impl CommandBuffer {
         self.cleanup_list.clear();
     }
 }
+
+impl Drop for CommandBuffer {
+    fn drop(&mut self) {
+        assert!(
+            self.cleanup_list.is_empty(),
+            "Command buffer's ({:?}) cleanup list wasn't cleared during runtime",
+            self.command_buffer
+        )
+    }
+}

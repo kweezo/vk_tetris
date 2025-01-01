@@ -89,6 +89,7 @@ impl Device {
             runtime_descriptor_array: true as u32,
 
             descriptor_binding_partially_bound: true as u32,
+            descriptor_binding_variable_descriptor_count: true as u32,
 
             shader_storage_buffer_array_non_uniform_indexing: true as u32,
             shader_sampled_image_array_non_uniform_indexing: true as u32,
@@ -97,10 +98,12 @@ impl Device {
             descriptor_binding_storage_buffer_update_after_bind: true as u32,
             descriptor_binding_sampled_image_update_after_bind: true as u32,
             descriptor_binding_storage_image_update_after_bind: true as u32,
+            descriptor_binding_uniform_buffer_update_after_bind: true as u32,
+
             ..Default::default()
         };
 
-        let mut device_features = vk::PhysicalDeviceFeatures2 {
+        let device_features = vk::PhysicalDeviceFeatures2 {
             s_type: vk::StructureType::PHYSICAL_DEVICE_FEATURES_2,
             p_next: &mut descriptor_indexing_features as *mut _ as *mut c_void,
             ..Default::default()
@@ -108,7 +111,7 @@ impl Device {
 
         let create_info = vk::DeviceCreateInfo {
             s_type: vk::StructureType::DEVICE_CREATE_INFO,
-            p_next: &mut device_features as *mut _ as *mut c_void,
+            p_next: &device_features as *const _ as *const c_void,
             queue_create_info_count: 1,
             p_queue_create_infos: &create_info,
             enabled_extension_count: extensions.len() as u32,

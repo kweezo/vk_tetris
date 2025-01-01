@@ -1,5 +1,6 @@
 use ash::vk;
 use descriptor::{DescriptorInfo, DescriptorSet};
+use std::time::{SystemTime, UNIX_EPOCH};
 use vk_mem::Alloc;
 
 use std::{
@@ -13,6 +14,9 @@ use crate::vulkan::core::*;
 use crate::vulkan::*;
 
 use bytemuck::bytes_of;
+
+const PLAYFIELD_WIDTH: usize = 10;
+const PLAYFIELD_HEIGHT: usize = 16;
 
 fn transfer_cleanup(
     device: ash::Device,
@@ -36,10 +40,12 @@ fn transfer_cleanup(
 }
 
 pub struct Board {
-    tetrominos: Vec<Tetromino>,
+    tetromino: Tetromino,
+    playfield: [[[u8; 3]; PLAYFIELD_HEIGHT]; PLAYFIELD_WIDTH],
+
     previous_tetromino_count: usize,
 
-    base_tetromino_tex: Texture,
+    tetromino_tex: Texture,
 
     vertex_buffer: Buffer,
     index_buffer: Buffer,
@@ -47,104 +53,50 @@ pub struct Board {
     projection_uniform: Buffer,
 
     transfer_command_buffer: Arc<RwLock<CommandBuffer>>,
-    draw_command_buffer: CommandBuffer,
 
     transfer_finished_fence: Fence,
 
     transfer_finished_thread_handle: Option<std::thread::JoinHandle<()>>,
 
     transfer_semaphore: Semaphore,
-    draw_semaphore: Semaphore,
+
+    fall_interval: u32,
+    previous_interval: u128,
 }
 
 impl<'a> Board {
     pub fn new(
         device: &Device,
-        base_tetromino_tex_path: &str,
+        tetromino_tex_path: &str,
         command_pool: &CommandPool,
         screen_res: (u32, u32),
     ) -> Board {
-        let indices: [u16; 6] = [0, 1, 2, 1, 2, 3];
-
-        let vertices: [f32; 8] = [0f32, 0f32, 0f32, 1f32, 1f32, 0f32, 1f32, 1f32];
-
         let mut transfer_command_buffer = CommandBuffer::new(device, command_pool, false);
-        let draw_command_buffer = CommandBuffer::new(device, command_pool, true);
-
-        let fence = Fence::new(device, false);
-
-        transfer_command_buffer.begin(
-            device,
-            &vk::CommandBufferInheritanceInfo::default(),
-            vk::CommandBufferUsageFlags::empty(),
-        );
-
-        let vertex_buffer = Buffer::new(
-            device,
-            &mut transfer_command_buffer,
-            bytes_of(&vertices),
-            BufferType::Vertex,
-            false,
-        );
-        let index_buffer = Buffer::new(
-            device,
-            &mut transfer_command_buffer,
-            bytes_of(&indices),
-            BufferType::Index,
-            false,
-        );
-        let base_tetromino_tex = Texture::new(
-            base_tetromino_tex_path,
-            device,
-            &mut transfer_command_buffer,
-        )
-        .expect("Failed to load the base tetromino texture");
-
-        let projection = Board::get_projection_matrix(screen_res);
-        let projection_uniform = Buffer::new(
-            device,
-            &mut transfer_command_buffer,
-            bytes_of(&projection),
-            BufferType::Uniform,
-            false,
-        );
-
-        transfer_command_buffer.end(device);
-
-        CommandBuffer::submit(
-            device,
-            std::slice::from_ref(&transfer_command_buffer.get_command_buffer()),
-            &[],
-            &[],
-            fence.get_fence(),
-        );
-
-        unsafe {
-            device
-                .get_ash_device()
-                .wait_for_fences(&[fence.get_fence()], true, u64::MAX)
-                .expect("Failed to wait for the board transfer fence");
-        }
-
-        transfer_command_buffer.cleanup(device);
 
         let transfer_semaphore = Semaphore::new(device);
-        let draw_semaphore = Semaphore::new(device);
+
+        let buffers = Board::initialize_buffers(
+            device,
+            &mut transfer_command_buffer,
+            tetromino_tex_path,
+            screen_res,
+        );
 
         Board {
-            tetrominos: Vec::new(),
-            base_tetromino_tex,
+            tetromino: Tetromino::new(4, 0, TetrominoType::I),
             transfer_command_buffer: Arc::new(RwLock::new(transfer_command_buffer)),
-            draw_command_buffer,
-            vertex_buffer,
-            index_buffer,
             instance_buffer: None,
             previous_tetromino_count: 0,
             transfer_semaphore,
-            draw_semaphore,
-            projection_uniform,
+            vertex_buffer: buffers.0,
+            index_buffer: buffers.1,
+            projection_uniform: buffers.2,
+            tetromino_tex: buffers.3,
             transfer_finished_fence: Fence::new(device, false),
             transfer_finished_thread_handle: None,
+            playfield: [[[0; 3]; 16]; 10],
+            fall_interval: 250,
+            previous_interval: 0,
         }
     }
 
@@ -178,51 +130,99 @@ impl<'a> Board {
         ]
     }
 
+    fn initialize_buffers(
+        device: &Device,
+        command_buffer: &mut CommandBuffer,
+        tetromino_tex_path: &str,
+        screen_res: (u32, u32),
+    ) -> (Buffer, Buffer, Buffer, Texture) {
+        let indices: [u16; 6] = [0, 1, 2, 1, 2, 3];
+
+        let vertices: [f32; 8] = [0f32, 0f32, 0f32, 1f32, 1f32, 0f32, 1f32, 1f32];
+
+        let fence = Fence::new(device, false);
+
+        command_buffer.begin(
+            device,
+            &vk::CommandBufferInheritanceInfo::default(),
+            vk::CommandBufferUsageFlags::empty(),
+        );
+
+        let vertex_buffer = Buffer::new(
+            device,
+            command_buffer,
+            bytes_of(&vertices),
+            BufferType::Vertex,
+            false,
+        );
+
+        let index_buffer = Buffer::new(
+            device,
+            command_buffer,
+            bytes_of(&indices),
+            BufferType::Index,
+            false,
+        );
+
+        let tetromino_tex = Texture::new(tetromino_tex_path, device, command_buffer)
+            .expect("Failed to load the base tetromino texture");
+
+        let projection = Board::get_projection_matrix(screen_res);
+        let projection_buffer = Buffer::new(
+            device,
+            command_buffer,
+            bytes_of(&projection),
+            BufferType::Uniform,
+            false,
+        );
+
+        command_buffer.end(device);
+
+        CommandBuffer::submit(
+            device,
+            std::slice::from_ref(&command_buffer.get_command_buffer()),
+            &[],
+            &[],
+            fence.get_fence(),
+        );
+
+        unsafe {
+            device
+                .get_ash_device()
+                .wait_for_fences(&[fence.get_fence()], true, u64::MAX)
+                .expect("Failed to wait for the board transfer fence");
+        }
+
+        command_buffer.cleanup(device);
+
+        (
+            vertex_buffer,
+            index_buffer,
+            projection_buffer,
+            tetromino_tex,
+        )
+    }
+
     fn record_draw_command_buffer(
         &self,
         device: &Device,
         render_pass: &RenderPass,
+        command_buffer: &CommandBuffer,
         subpass_index: u32,
-        image_index: u32,
-        set: &DescriptorSet,
         push_constants: &[u8],
+        instance_count: u32,
     ) {
-        let inheritance_info = vk::CommandBufferInheritanceInfo {
-            s_type: vk::StructureType::COMMAND_BUFFER_INHERITANCE_INFO,
-
-            framebuffer: render_pass.get_framebuffer(image_index),
-            render_pass: render_pass.get_render_pass(),
-            subpass: subpass_index,
-
-            ..Default::default()
-        };
-
-        self.draw_command_buffer.begin(
-            device,
-            &inheritance_info,
-            vk::CommandBufferUsageFlags::RENDER_PASS_CONTINUE,
-        );
-
         let offset = 0u32;
 
         unsafe {
             device.get_ash_device().cmd_bind_pipeline(
-                self.draw_command_buffer.get_command_buffer(),
+                command_buffer.get_command_buffer(),
                 vk::PipelineBindPoint::GRAPHICS,
-                render_pass.get_pipeline(),
-            );
-
-            device.get_ash_device().cmd_bind_descriptor_sets(
-                self.draw_command_buffer.get_command_buffer(),
-                vk::PipelineBindPoint::GRAPHICS,
-                render_pass.get_layout(),
-                0,
-                &[set.get_set()],
-                &[offset],
+                render_pass.get_pipeline(subpass_index as usize),
             );
 
             device.get_ash_device().cmd_push_constants(
-                self.draw_command_buffer.get_command_buffer(),
+                command_buffer.get_command_buffer(),
                 render_pass.get_layout(),
                 vk::ShaderStageFlags::ALL,
                 offset,
@@ -230,7 +230,7 @@ impl<'a> Board {
             );
 
             device.get_ash_device().cmd_bind_vertex_buffers(
-                self.draw_command_buffer.get_command_buffer(),
+                command_buffer.get_command_buffer(),
                 0,
                 &[
                     self.vertex_buffer.get_buffer(),
@@ -239,49 +239,64 @@ impl<'a> Board {
                 &[0, 0],
             );
             device.get_ash_device().cmd_bind_index_buffer(
-                self.draw_command_buffer.get_command_buffer(),
+                command_buffer.get_command_buffer(),
                 self.index_buffer.get_buffer(),
                 0,
                 vk::IndexType::UINT16,
             );
             device.get_ash_device().cmd_draw_indexed(
-                self.draw_command_buffer.get_command_buffer(),
+                command_buffer.get_command_buffer(),
                 6,
-                self.tetrominos.len() as u32 * 4,
+                instance_count,
                 0,
                 0,
                 0,
             );
         }
-
-        self.draw_command_buffer.end(device);
     }
 
     fn get_instance_data(&self) -> Vec<u8> {
-        let mut data = Vec::<u8>::with_capacity(self.tetrominos.len() * 8);
+        let mut data = Vec::<u8>::with_capacity(PLAYFIELD_HEIGHT * PLAYFIELD_WIDTH * 5);
 
-        for tetromino in &self.tetrominos {
-            let block_positions = tetromino.get_blocks();
-            for pos in block_positions.chunks(2) {
-                data.extend_from_slice(pos); // pos
-                data.extend_from_slice(&[255; 3]); // color
-                data.extend_from_slice(&[1; 3]); // padding
+        for x in 0..self.playfield.len() {
+            for y in 0..self.playfield[x].len() {
+                if self.playfield[x][y] == [0; 3] {
+                    continue;
+                }
+
+                data.extend_from_slice(&[
+                    x as u8,
+                    y as u8,
+                    self.playfield[x][y][0],
+                    self.playfield[x][y][1],
+                    self.playfield[x][y][2],
+                ]);
+
+                data.extend_from_slice(&[0; 3]); // padding
             }
         }
+
+        for pos in self.tetromino.get_blocks().chunks_exact(2) {
+            data.extend_from_slice(&[pos[0], pos[1], 255, 255, 255]);
+
+            data.extend_from_slice(&[0; 3]);
+        }
+
+        data.shrink_to_fit();
 
         data
     }
 
-    pub fn record_transfer_command_buffer(&mut self, device: &Device) {
+    pub fn record_transfer_command_buffer(&mut self, device: &Device, data: &Vec<u8>) {
         self.transfer_command_buffer.read().unwrap().begin(
             device,
             &vk::CommandBufferInheritanceInfo::default(),
             vk::CommandBufferUsageFlags::empty(),
         );
 
-        let data = Board::get_instance_data(self);
+        if data.len() != self.previous_tetromino_count {
+            self.previous_tetromino_count = data.len();
 
-        if self.tetrominos.len() != self.previous_tetromino_count {
             if let Some(buff) = &mut self.instance_buffer {
                 buff.destroy(device)
             }
@@ -304,29 +319,66 @@ impl<'a> Board {
         self.transfer_command_buffer.read().unwrap().end(device);
     }
 
-    pub fn update() {}
+    fn handle_inputs(&mut self, events: &glfw::GlfwReceiver<(f64, glfw::WindowEvent)>) {
+        for event in glfw::flush_messages(&events) {
+            match event.1 {
+                glfw::WindowEvent::Key(glfw::Key::R, _, glfw::Action::Press, _) => {
+                    self.tetromino.rotate()
+                }
+
+                glfw::WindowEvent::Key(glfw::Key::Left, _, glfw::Action::Press, _) => {
+                    self.tetromino.shift(-1, 0)
+                }
+
+                glfw::WindowEvent::Key(glfw::Key::Right, _, glfw::Action::Press, _) => {
+                    self.tetromino.shift(1, 0)
+                }
+
+                _ => (),
+            }
+        }
+    }
+
+    fn handle_gravity(&mut self) {
+        let curr = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_millis();
+
+        if (self.previous_interval + self.fall_interval as u128) >= curr {
+            return;
+        }
+
+        self.previous_interval = curr;
+
+        self.tetromino.shift(0, 1);
+    }
+
+    pub fn update(&mut self, events: &glfw::GlfwReceiver<(f64, glfw::WindowEvent)>) {
+        self.handle_inputs(events);
+        self.handle_gravity();
+    }
 
     pub fn draw(
         &mut self,
         device: &Device,
         render_pass: &RenderPass,
+        command_buffer: &CommandBuffer,
         subpass_index: u32,
-        image_index: u32,
-        set: &DescriptorSet,
-        push_constants: &[u8],
-    ) -> Option<(vk::CommandBuffer, vk::Semaphore)> {
-        if self.tetrominos.is_empty() {
-            return None;
-        }
+    ) {
+        let data = Board::get_instance_data(self);
 
-        self.record_transfer_command_buffer(device);
+        if data.is_empty() {
+            return;
+        }
+        self.record_transfer_command_buffer(device, &data);
         self.record_draw_command_buffer(
             device,
             render_pass,
+            command_buffer,
             subpass_index,
-            image_index,
-            set,
-            push_constants,
+            &[0; 128],
+            (data.len() / 8) as u32,
         );
 
         CommandBuffer::submit(
@@ -356,19 +408,14 @@ impl<'a> Board {
                 transfer_cleanup(device, allocator, fence, command_buffer);
             }
         }));
-
-        Some((
-            self.draw_command_buffer.get_command_buffer(),
-            self.transfer_semaphore.get_semaphore(),
-        ))
     }
 
     pub fn add_piece(&mut self, x: u8, y: u8, shape: tetromino::TetrominoType) {
-        self.tetrominos.push(Tetromino::new(x, y, shape));
+        self.tetromino = Tetromino::new(x, y, shape);
     }
 
     pub fn get_tetromino_tex(&self) -> &Texture {
-        &self.base_tetromino_tex
+        &self.tetromino_tex
     }
 
     pub fn get_descriptor_write_sets(
@@ -377,8 +424,8 @@ impl<'a> Board {
     ) -> ([vk::WriteDescriptorSet; 2], Pin<Box<[DescriptorInfo; 2]>>) {
         let image_info = vk::DescriptorImageInfo {
             image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-            image_view: self.base_tetromino_tex.get_image_view(),
-            sampler: self.base_tetromino_tex.get_sampler(),
+            image_view: self.tetromino_tex.get_image_view(),
+            sampler: self.tetromino_tex.get_sampler(),
         };
 
         let buffer_info = vk::DescriptorBufferInfo {
@@ -400,7 +447,7 @@ impl<'a> Board {
         );
         let uniform_write_set = set.create_write_set(
             &descriptor_infos.as_ref()[1],
-            vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC,
+            vk::DescriptorType::UNIFORM_BUFFER,
             0,
             1,
         );
@@ -408,8 +455,12 @@ impl<'a> Board {
         ([image_write_set, uniform_write_set], descriptor_infos)
     }
 
+    pub fn get_transfer_semaphore(&self) -> vk::Semaphore {
+        self.transfer_semaphore.get_semaphore()
+    }
+
     pub fn destruct(&mut self, device: &Device) {
-        self.base_tetromino_tex.destroy(device);
+        self.tetromino_tex.destroy(device);
         self.index_buffer.destroy(device);
         self.vertex_buffer.destroy(device);
         self.instance_buffer.as_mut().unwrap().destroy(device);

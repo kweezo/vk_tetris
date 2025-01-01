@@ -2,13 +2,51 @@ use ash::vk;
 
 use crate::vulkan::shader::Shader;
 
-use super::core::*;
+use super::{core::*, *};
+
+struct DepthImage {
+    image: Image,
+    image_view: vk::ImageView,
+}
+
+impl DepthImage {
+    pub fn new(device: &Device, width: u32, height: u32) -> DepthImage {
+        let image = Image::new_empty(device, width, height, image::Type::DEPTH);
+
+        let view_info = vk::ImageViewCreateInfo {
+            s_type: vk::StructureType::IMAGE_VIEW_CREATE_INFO,
+            image: image.get_image(),
+            view_type: vk::ImageViewType::TYPE_2D,
+            format: vk::Format::D32_SFLOAT,
+            components: vk::ComponentMapping::default(),
+            subresource_range: vk::ImageSubresourceRange {
+                aspect_mask: vk::ImageAspectFlags::DEPTH,
+                base_array_layer: 0,
+                base_mip_level: 0,
+                layer_count: 1,
+                level_count: 1,
+            },
+            ..Default::default()
+        };
+
+        let image_view = unsafe {
+            device
+                .get_ash_device()
+                .create_image_view(&view_info, None)
+                .expect("Failed to create the depth image view")
+        };
+
+        DepthImage { image, image_view }
+    }
+}
 
 pub struct RenderPass {
-    pipeline: vk::Pipeline,
+    pipelines: Vec<vk::Pipeline>,
     pipeline_layout: vk::PipelineLayout,
     render_pass: vk::RenderPass,
     framebuffers: Vec<vk::Framebuffer>,
+
+    depth_image: DepthImage,
 }
 
 impl RenderPass {
@@ -50,6 +88,7 @@ impl RenderPass {
         extent: vk::Extent2D,
         render_pass: vk::RenderPass,
         pipeline_vertex_input_state: &vk::PipelineVertexInputStateCreateInfo,
+        subpass_index: u32,
     ) -> vk::Pipeline {
         let shader_stages = shader.get_pipeline_stage_shader_info();
 
@@ -106,6 +145,8 @@ impl RenderPass {
         let depth_stencil_state = vk::PipelineDepthStencilStateCreateInfo {
             s_type: vk::StructureType::PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
             depth_test_enable: true as u32,
+            depth_write_enable: true as u32,
+            depth_compare_op: vk::CompareOp::LESS,
             ..Default::default()
         };
 
@@ -147,7 +188,7 @@ impl RenderPass {
             p_dynamic_state: &dynamic_state,
             p_color_blend_state: &color_blend_state,
             layout,
-            subpass: 0,
+            subpass: subpass_index,
             ..Default::default()
         };
 
@@ -163,7 +204,11 @@ impl RenderPass {
         pipeline
     }
 
-    fn create_render_pass(device: &Device, format: vk::Format) -> vk::RenderPass {
+    fn create_render_pass(
+        device: &Device,
+        format: vk::Format,
+        color_subpass_count: u32,
+    ) -> vk::RenderPass {
         let color_attachment = vk::AttachmentDescription {
             format,
             load_op: vk::AttachmentLoadOp::CLEAR,
@@ -181,31 +226,78 @@ impl RenderPass {
             layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
         };
 
-        let subpass_description = vk::SubpassDescription {
-            pipeline_bind_point: vk::PipelineBindPoint::GRAPHICS,
-            color_attachment_count: 1,
-            p_color_attachments: &color_attachment_ref,
+        let depth_attachment = vk::AttachmentDescription {
+            format: vk::Format::D32_SFLOAT,
+            samples: vk::SampleCountFlags::TYPE_1,
+            load_op: vk::AttachmentLoadOp::CLEAR,
+            store_op: vk::AttachmentStoreOp::DONT_CARE,
+            stencil_load_op: vk::AttachmentLoadOp::DONT_CARE,
+            stencil_store_op: vk::AttachmentStoreOp::DONT_CARE,
+            initial_layout: vk::ImageLayout::UNDEFINED,
+            final_layout: vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+
             ..Default::default()
         };
 
-        let subpass_dependency = vk::SubpassDependency {
+        let depth_attachment_ref = vk::AttachmentReference {
+            attachment: 1,
+            layout: vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+        };
+
+        let mut subpass_descriptions =
+            Vec::<vk::SubpassDescription>::with_capacity(color_subpass_count as usize);
+
+        for _ in 0..color_subpass_count {
+            subpass_descriptions.push(vk::SubpassDescription {
+                pipeline_bind_point: vk::PipelineBindPoint::GRAPHICS,
+                color_attachment_count: 1,
+                p_color_attachments: &color_attachment_ref,
+                p_depth_stencil_attachment: &depth_attachment_ref,
+                ..Default::default()
+            });
+        }
+
+        let mut subpass_dependencies =
+            Vec::<vk::SubpassDependency>::with_capacity(color_subpass_count as usize);
+
+        let dependency = vk::SubpassDependency {
             src_subpass: vk::SUBPASS_EXTERNAL,
             dst_subpass: 0,
-            src_stage_mask: vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
+            src_stage_mask: vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT
+                | vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS,
             src_access_mask: vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
-            dst_stage_mask: vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
-            dst_access_mask: vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
+            dst_stage_mask: vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT
+                | vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS,
+            dst_access_mask: vk::AccessFlags::COLOR_ATTACHMENT_WRITE
+                | vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE,
             ..Default::default()
         };
+
+        subpass_dependencies.push(dependency);
+
+        for i in 1..color_subpass_count {
+            subpass_dependencies.push(vk::SubpassDependency {
+                src_subpass: i - 1,
+                dst_subpass: i,
+                src_stage_mask: vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT
+                    | vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS,
+                src_access_mask: vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
+                dst_stage_mask: vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT
+                    | vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS,
+                dst_access_mask: vk::AccessFlags::COLOR_ATTACHMENT_WRITE
+                    | vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE,
+                ..Default::default()
+            })
+        }
 
         let render_pass_info = vk::RenderPassCreateInfo {
             s_type: vk::StructureType::RENDER_PASS_CREATE_INFO,
-            attachment_count: 1,
-            p_attachments: &color_attachment,
-            subpass_count: 1,
-            p_subpasses: &subpass_description,
-            dependency_count: 1,
-            p_dependencies: &subpass_dependency,
+            attachment_count: 2,
+            p_attachments: [color_attachment, depth_attachment].as_ptr(), //invalidated?
+            subpass_count: subpass_descriptions.len() as u32,
+            p_subpasses: subpass_descriptions.as_ptr(),
+            dependency_count: subpass_dependencies.len() as u32,
+            p_dependencies: subpass_dependencies.as_ptr(),
             ..Default::default()
         };
 
@@ -224,7 +316,8 @@ impl RenderPass {
         image_count: u32,
         extent: vk::Extent2D,
         render_pass: vk::RenderPass,
-        image_views: &[vk::ImageView],
+        color_image_views: &[vk::ImageView],
+        depth_image_view: vk::ImageView,
     ) -> Vec<vk::Framebuffer> {
         let mut framebuffers = vec![vk::Framebuffer::null(); 3];
 
@@ -232,8 +325,8 @@ impl RenderPass {
             let create_info = vk::FramebufferCreateInfo {
                 s_type: vk::StructureType::FRAMEBUFFER_CREATE_INFO,
                 render_pass,
-                attachment_count: 1,
-                p_attachments: &image_views[i as usize],
+                attachment_count: 2,
+                p_attachments: [color_image_views[i as usize], depth_image_view].as_ptr(),
                 width: extent.width,
                 height: extent.height,
                 layers: 1,
@@ -253,23 +346,37 @@ impl RenderPass {
 
     pub fn new(
         device: &Device,
-        shader: &Shader,
+        shaders: &[Shader],
         swapchain: &Swapchain,
         pipeline_vertex_input_state: &vk::PipelineVertexInputStateCreateInfo,
         set_layout: vk::DescriptorSetLayout,
     ) -> RenderPass {
         let layout = RenderPass::create_pipeline_layout(device, set_layout);
 
-        let render_pass =
-            RenderPass::create_render_pass(device, swapchain.get_swapchain_info().format.format);
-
-        let pipeline = RenderPass::create_graphics_pipeline(
+        let render_pass = RenderPass::create_render_pass(
             device,
-            layout,
-            shader,
-            swapchain.get_swapchain_info().extent,
-            render_pass,
-            pipeline_vertex_input_state,
+            swapchain.get_swapchain_info().format.format,
+            shaders.len() as u32,
+        );
+
+        let mut pipelines = Vec::<vk::Pipeline>::with_capacity(shaders.len());
+
+        for (i, shader) in shaders.iter().enumerate() {
+            pipelines.push(RenderPass::create_graphics_pipeline(
+                device,
+                layout,
+                shader,
+                swapchain.get_swapchain_info().extent,
+                render_pass,
+                pipeline_vertex_input_state,
+                i as u32,
+            ));
+        }
+
+        let depth_image = DepthImage::new(
+            device,
+            swapchain.get_swapchain_info().extent.width,
+            swapchain.get_swapchain_info().extent.height,
         );
 
         let framebuffers = RenderPass::create_framebuffers(
@@ -278,18 +385,20 @@ impl RenderPass {
             swapchain.get_swapchain_info().extent,
             render_pass,
             swapchain.get_image_views(),
+            depth_image.image_view,
         );
 
         RenderPass {
-            pipeline,
+            pipelines,
             pipeline_layout: layout,
             render_pass,
             framebuffers,
+            depth_image,
         }
     }
 
-    pub fn get_pipeline(&self) -> vk::Pipeline {
-        self.pipeline
+    pub fn get_pipeline(&self, i: usize) -> vk::Pipeline {
+        self.pipelines[i]
     }
 
     pub fn get_render_pass(&self) -> vk::RenderPass {
@@ -302,5 +411,9 @@ impl RenderPass {
 
     pub fn get_layout(&self) -> vk::PipelineLayout {
         self.pipeline_layout
+    }
+
+    pub fn destroy(&mut self, device: &Device){
+        self.depth_image.image.destroy(device);
     }
 }

@@ -17,6 +17,10 @@ unsafe extern "system" fn vulkan_debug_utils_callback(
     p_callback_data: *const vk::DebugUtilsMessengerCallbackDataEXT,
     _p_user_data: *mut std::ffi::c_void,
 ) -> vk::Bool32 {
+    if (*p_callback_data).message_id_number == -937765618 {
+        return vk::FALSE;
+    }
+
     let message = CStr::from_ptr((*p_callback_data).p_message);
     eprintln!("{:?}", message);
     panic!("everythings gone to shit lmfao");
@@ -125,10 +129,10 @@ impl Instance {
         required_extensions_cstr.sort();
         required_extensions_cstr.dedup();
 
-        if required_extensions_cstr.len() != glfw_extensions.len() {
-            //TODO, fix edge case where glfw_extensions and required_extensions are overlapping
-            panic!("Error: not all required instance extensions present");
-        }
+        assert!(
+            required_extensions_cstr.len() == glfw_extensions.len(),
+            "Error: not all required instance extensions present"
+        );
 
         let required_extensions_cstr_ptr: Vec<*const i8> = required_extensions_cstr
             .iter()

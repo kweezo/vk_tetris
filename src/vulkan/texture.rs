@@ -31,6 +31,7 @@ impl Texture {
             data,
             image_raw.width(),
             image_raw.height(),
+            image::Type::SAMPLED,
             commad_buffer,
         );
         let image_view = Texture::create_image_view(device, image.get_image());
