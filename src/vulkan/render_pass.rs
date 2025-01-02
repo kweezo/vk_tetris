@@ -413,7 +413,7 @@ impl RenderPass {
         self.pipeline_layout
     }
 
-    pub fn destroy(&mut self, device: &Device){
+    pub fn destroy(&mut self, device: &Device) {
         self.depth_image.image.destroy(device);
     }
 }

@@ -119,7 +119,7 @@ impl<'a> UserInterface {
                 render_pass.get_layout(),
                 vk::ShaderStageFlags::ALL,
                 offset,
-                &1i32.to_ne_bytes()
+                &1i32.to_ne_bytes(),
             );
 
             device.get_ash_device().cmd_bind_vertex_buffers(

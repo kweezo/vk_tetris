@@ -11,7 +11,7 @@ pub struct TransitionInfo {
     pub src_stage: vk::PipelineStageFlags,
     pub dst_stage: vk::PipelineStageFlags,
 }
-#[derive(Debug)] 
+#[derive(Debug)]
 pub enum Type {
     SAMPLED,
     DEPTH,
@@ -50,7 +50,6 @@ impl Image {
         height: u32,
         image_type: Type,
     ) -> (vk::Image, vk_mem::Allocation) {
-
         let image_info = vk::ImageCreateInfo {
             s_type: vk::StructureType::IMAGE_CREATE_INFO,
             image_type: vk::ImageType::TYPE_2D,

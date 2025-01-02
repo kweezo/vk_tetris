@@ -1,6 +1,7 @@
 use ash::vk;
 use descriptor::{DescriptorInfo, DescriptorSet};
 use std::time::{SystemTime, UNIX_EPOCH};
+use tetromino::BoundIntersection;
 use vk_mem::Alloc;
 
 use std::{
@@ -14,6 +15,8 @@ use crate::vulkan::core::*;
 use crate::vulkan::*;
 
 use bytemuck::bytes_of;
+
+use rand::prelude::*;
 
 const PLAYFIELD_WIDTH: usize = 10;
 const PLAYFIELD_HEIGHT: usize = 16;
@@ -41,7 +44,7 @@ fn transfer_cleanup(
 
 pub struct Board {
     tetromino: Tetromino,
-    playfield: [[[u8; 3]; PLAYFIELD_HEIGHT]; PLAYFIELD_WIDTH],
+    playfield: [[[u8; 3]; PLAYFIELD_WIDTH]; PLAYFIELD_HEIGHT],
 
     previous_tetromino_count: usize,
 
@@ -62,6 +65,8 @@ pub struct Board {
 
     fall_interval: u32,
     previous_interval: u128,
+
+    rng: ThreadRng,
 }
 
 impl<'a> Board {
@@ -82,8 +87,13 @@ impl<'a> Board {
             screen_res,
         );
 
+        let mut rng = thread_rng();
+
+        let mut tetromino = Tetromino::new(4, 0, [255; 3], TetrominoType::rand(&mut rng));
+        tetromino.shift(0, 0);
+
         Board {
-            tetromino: Tetromino::new(4, 0, TetrominoType::I),
+            tetromino,
             transfer_command_buffer: Arc::new(RwLock::new(transfer_command_buffer)),
             instance_buffer: None,
             previous_tetromino_count: 0,
@@ -94,9 +104,10 @@ impl<'a> Board {
             tetromino_tex: buffers.3,
             transfer_finished_fence: Fence::new(device, false),
             transfer_finished_thread_handle: None,
-            playfield: [[[0; 3]; 16]; 10],
-            fall_interval: 250,
+            playfield: [[[0; 3]; PLAYFIELD_WIDTH]; PLAYFIELD_HEIGHT],
+            fall_interval: 1500,
             previous_interval: 0,
+            rng,
         }
     }
 
@@ -258,18 +269,18 @@ impl<'a> Board {
     fn get_instance_data(&self) -> Vec<u8> {
         let mut data = Vec::<u8>::with_capacity(PLAYFIELD_HEIGHT * PLAYFIELD_WIDTH * 5);
 
-        for x in 0..self.playfield.len() {
-            for y in 0..self.playfield[x].len() {
-                if self.playfield[x][y] == [0; 3] {
+        for y in 0..self.playfield.len() {
+            for x in 0..self.playfield[y].len() {
+                if self.playfield[y][x] == [0; 3] {
                     continue;
                 }
 
                 data.extend_from_slice(&[
                     x as u8,
                     y as u8,
-                    self.playfield[x][y][0],
-                    self.playfield[x][y][1],
-                    self.playfield[x][y][2],
+                    self.playfield[y][x][0],
+                    self.playfield[y][x][1],
+                    self.playfield[y][x][2],
                 ]);
 
                 data.extend_from_slice(&[0; 3]); // padding
@@ -277,7 +288,8 @@ impl<'a> Board {
         }
 
         for pos in self.tetromino.get_blocks().chunks_exact(2) {
-            data.extend_from_slice(&[pos[0], pos[1], 255, 255, 255]);
+            data.extend_from_slice(&[pos[0], pos[1]]);
+            data.extend_from_slice(&self.tetromino.get_color());
 
             data.extend_from_slice(&[0; 3]);
         }
@@ -319,6 +331,35 @@ impl<'a> Board {
         self.transfer_command_buffer.read().unwrap().end(device);
     }
 
+    fn check_collision_in_dir(&self, x: i8, y: i8) -> bool {
+        for pos in self.tetromino.get_blocks().chunks(2) {
+            let offset_x = ((pos[0] as i8) + x) as usize;
+            let offset_y = ((pos[1] as i8) + y) as usize;
+
+            if offset_x >= PLAYFIELD_WIDTH || offset_y >= PLAYFIELD_HEIGHT {
+                return false;
+            }
+
+            if self.playfield[offset_y][offset_x] != [0; 3] {
+                return true;
+            }
+        }
+
+        false
+    }
+
+    fn get_random_color(&mut self) -> [u8; 3] {
+        match self.rng.gen_range(1..8) {
+            1 => [255, 0, 0],
+            2 => [0, 0, 255],
+            3 => [0, 255, 0],
+            4 => [255, 255, 0],
+            5 => [255, 0, 255],
+            6 => [0, 255, 255],
+            _ => [255, 255, 255],
+        }
+    }
+
     fn handle_inputs(&mut self, events: &glfw::GlfwReceiver<(f64, glfw::WindowEvent)>) {
         for event in glfw::flush_messages(&events) {
             match event.1 {
@@ -327,11 +368,29 @@ impl<'a> Board {
                 }
 
                 glfw::WindowEvent::Key(glfw::Key::Left, _, glfw::Action::Press, _) => {
+                    if self.check_collision_in_dir(-1, 0) {
+                        break;
+                    }
+
                     self.tetromino.shift(-1, 0)
                 }
 
                 glfw::WindowEvent::Key(glfw::Key::Right, _, glfw::Action::Press, _) => {
+                    if self.check_collision_in_dir(1, 0) {
+                        break;
+                    }
+
                     self.tetromino.shift(1, 0)
+                }
+
+                glfw::WindowEvent::Key(glfw::Key::Down, _, glfw::Action::Press, _) => {
+                    self.handle_block_collision();
+                    self.tetromino.shift(0, 1);
+
+                    self.previous_interval = SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap()
+                        .as_millis();
                 }
 
                 _ => (),
@@ -340,6 +399,57 @@ impl<'a> Board {
     }
 
     fn handle_gravity(&mut self) {
+        self.tetromino.shift(0, 1);
+    }
+
+    fn handle_block_collision(&mut self) {
+        if let BoundIntersection::BOTTOM = self.tetromino.get_bound_intersection(
+            self.tetromino.get_position().0,
+            self.tetromino.get_position().1 + 1,
+        ) {
+            for pos in self.tetromino.get_blocks().chunks(2) {
+                self.playfield[pos[1] as usize][pos[0] as usize] = self.tetromino.get_color();
+            }
+
+            self.add_tetromino(0, 0, );
+            return;
+        }
+
+        for pos in self.tetromino.get_blocks().chunks(2) {
+            if self.playfield[(pos[1] + 1) as usize][pos[0] as usize] == [0; 3] {
+                continue;
+            }
+
+            for pos in self.tetromino.get_blocks().chunks(2) {
+                self.playfield[pos[1] as usize][pos[0] as usize] = self.tetromino.get_color();
+            }
+
+            self.add_tetromino(0, 0);
+            break;
+        }
+    }
+
+    fn handle_line_clear(&mut self) {
+        for y in 0..PLAYFIELD_HEIGHT {
+            let mut is_full = true;
+
+            for x in 0..PLAYFIELD_WIDTH {
+                if self.playfield[y][x] == [0; 3] {
+                    is_full = false;
+                }
+            }
+
+            if !is_full {
+                continue;
+            }
+
+            for y_new in (0..y).rev() {
+                self.playfield[y_new + 1] = self.playfield[y_new];
+            }
+        }
+    }
+
+    fn fixed_update(&mut self){
         let curr = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
@@ -351,12 +461,14 @@ impl<'a> Board {
 
         self.previous_interval = curr;
 
-        self.tetromino.shift(0, 1);
+        self.handle_block_collision();
+        self.handle_gravity();
     }
 
     pub fn update(&mut self, events: &glfw::GlfwReceiver<(f64, glfw::WindowEvent)>) {
+        self.fixed_update();
         self.handle_inputs(events);
-        self.handle_gravity();
+        self.handle_line_clear();
     }
 
     pub fn draw(
@@ -410,8 +522,9 @@ impl<'a> Board {
         }));
     }
 
-    pub fn add_piece(&mut self, x: u8, y: u8, shape: tetromino::TetrominoType) {
-        self.tetromino = Tetromino::new(x, y, shape);
+    pub fn add_tetromino(&mut self, x: u8, y: u8) {
+        self.tetromino = Tetromino::new(x, y, self.get_random_color(), TetrominoType::rand(&mut self.rng));
+        self.tetromino.shift(0, 0);
     }
 
     pub fn get_tetromino_tex(&self) -> &Texture {

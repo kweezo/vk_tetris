@@ -123,8 +123,6 @@ fn main() {
 
     let mut user_interface = UserInterface::new(core.get_device(), &command_pool, "background.png");
 
-    board.add_piece(0, 0, game::TetrominoType::I);
-
     while !window.get_window_handle().should_close() {
         window.get_glfw_context_mut().poll_events();
 
@@ -167,113 +165,112 @@ fn main() {
             },
         };
 
-    let clear_depth_value = vk::ClearValue {
-        depth_stencil: vk::ClearDepthStencilValue {
-            depth: 1.0f32,
-            stencil: 0,
-        },
-    };
+        let clear_depth_value = vk::ClearValue {
+            depth_stencil: vk::ClearDepthStencilValue {
+                depth: 1.0f32,
+                stencil: 0,
+            },
+        };
 
-    let begin_info = vk::RenderPassBeginInfo {
-        s_type: vk::StructureType::RENDER_PASS_BEGIN_INFO,
-        framebuffer: render_pass.get_framebuffer(image_index),
-        render_pass: render_pass.get_render_pass(),
-        render_area: vk::Rect2D {
-            extent: core.get_swapchain().get_swapchain_info().extent,
-            offset: vk::Offset2D { x: 0, y: 0 },
-        },
+        let begin_info = vk::RenderPassBeginInfo {
+            s_type: vk::StructureType::RENDER_PASS_BEGIN_INFO,
+            framebuffer: render_pass.get_framebuffer(image_index),
+            render_pass: render_pass.get_render_pass(),
+            render_area: vk::Rect2D {
+                extent: core.get_swapchain().get_swapchain_info().extent,
+                offset: vk::Offset2D { x: 0, y: 0 },
+            },
 
-        clear_value_count: 2,
-        p_clear_values: [clear_color_value, clear_depth_value].as_ptr(),
+            clear_value_count: 2,
+            p_clear_values: [clear_color_value, clear_depth_value].as_ptr(),
 
-        ..Default::default()
-    };
+            ..Default::default()
+        };
 
-    command_buffer.begin(
-        core.get_device(),
-        &vk::CommandBufferInheritanceInfo::default(),
-        vk::CommandBufferUsageFlags::empty(),
-    );
-
-    unsafe {
-        device!(core).cmd_bind_descriptor_sets(
-            command_buffer.get_command_buffer(),
-            vk::PipelineBindPoint::GRAPHICS,
-            render_pass.get_layout(),
-            0,
-            &[descriptor_set.get_set()],
-            &[],
+        command_buffer.begin(
+            core.get_device(),
+            &vk::CommandBufferInheritanceInfo::default(),
+            vk::CommandBufferUsageFlags::empty(),
         );
 
-        device!(core).cmd_begin_render_pass(
-            command_buffer.get_command_buffer(),
-            &begin_info,
-            vk::SubpassContents::INLINE,
+        unsafe {
+            device!(core).cmd_bind_descriptor_sets(
+                command_buffer.get_command_buffer(),
+                vk::PipelineBindPoint::GRAPHICS,
+                render_pass.get_layout(),
+                0,
+                &[descriptor_set.get_set()],
+                &[],
+            );
+
+            device!(core).cmd_begin_render_pass(
+                command_buffer.get_command_buffer(),
+                &begin_info,
+                vk::SubpassContents::INLINE,
+            );
+
+            board.draw(core.get_device(), &render_pass, &command_buffer, 0);
+
+            let (board_write_sets, _write_infos) = board.get_descriptor_write_sets(&descriptor_set);
+
+            device!(core).cmd_next_subpass(
+                command_buffer.get_command_buffer(),
+                vk::SubpassContents::INLINE,
+            );
+
+            let (ui_write_sets, _write_infos) =
+                user_interface.get_descriptor_write_sets(&descriptor_set);
+
+            let mut write_sets = Vec::with_capacity(board_write_sets.len() + ui_write_sets.len());
+            write_sets.extend_from_slice(&board_write_sets);
+            write_sets.extend_from_slice(&ui_write_sets);
+
+            descriptor_set.update(core.get_device(), &write_sets.as_slice());
+
+            user_interface.draw(core.get_device(), &render_pass, &command_buffer, 1);
+
+            device!(core).cmd_end_render_pass(command_buffer.get_command_buffer());
+        }
+
+        command_buffer.end(core.get_device());
+
+        CommandBuffer::submit(
+            core.get_device(),
+            &[command_buffer.get_command_buffer()],
+            &[(
+                board.get_transfer_semaphore(),
+                vk::PipelineStageFlags::VERTEX_INPUT,
+            )],
+            &[render_finished_semaphore.get_semaphore()],
+            vk::Fence::null(),
         );
 
-        
-        board.draw(core.get_device(), &render_pass, &command_buffer, 0);
+        let present_info = vk::PresentInfoKHR {
+            s_type: vk::StructureType::PRESENT_INFO_KHR,
+            wait_semaphore_count: 1,
+            p_wait_semaphores: [render_finished_semaphore.get_semaphore()].as_ptr(),
 
-        let (board_write_sets, _write_infos) = board.get_descriptor_write_sets(&descriptor_set);
+            swapchain_count: 1,
+            p_swapchains: [core.get_swapchain().get_swapchain_info().swapchain].as_ptr(),
+            p_image_indices: [image_index].as_ptr(),
 
-        device!(core).cmd_next_subpass(
-            command_buffer.get_command_buffer(),
-            vk::SubpassContents::INLINE,
-        );
+            ..Default::default()
+        };
 
-        let (ui_write_sets, _write_infos) =
-            user_interface.get_descriptor_write_sets(&descriptor_set);
-
-        let mut write_sets = Vec::with_capacity(board_write_sets.len() + ui_write_sets.len());
-        write_sets.extend_from_slice(&board_write_sets);
-        write_sets.extend_from_slice(&ui_write_sets);
-
-        descriptor_set.update(core.get_device(), &write_sets.as_slice());
-
-        user_interface.draw(core.get_device(), &render_pass, &command_buffer, 1);
-
-        device!(core).cmd_end_render_pass(command_buffer.get_command_buffer());
+        unsafe {
+            core.get_swapchain()
+                .get_swapchain_info()
+                .swapchain_device
+                .queue_present(core.get_device().get_queue(), &present_info)
+                .expect("Failed to present image");
+        }
     }
 
-    command_buffer.end(core.get_device());
-
-    CommandBuffer::submit(
-        core.get_device(),
-        &[command_buffer.get_command_buffer()],
-        &[(
-            board.get_transfer_semaphore(),
-            vk::PipelineStageFlags::VERTEX_INPUT,
-        )],
-        &[render_finished_semaphore.get_semaphore()],
-        vk::Fence::null(),
-    );
-
-    let present_info = vk::PresentInfoKHR {
-        s_type: vk::StructureType::PRESENT_INFO_KHR,
-        wait_semaphore_count: 1,
-        p_wait_semaphores: [render_finished_semaphore.get_semaphore()].as_ptr(),
-
-        swapchain_count: 1,
-        p_swapchains: [core.get_swapchain().get_swapchain_info().swapchain].as_ptr(),
-        p_image_indices: [image_index].as_ptr(),
-
-        ..Default::default()
-    };
-
     unsafe {
-        core.get_swapchain()
-            .get_swapchain_info()
-            .swapchain_device
-            .queue_present(core.get_device().get_queue(), &present_info)
-            .expect("Failed to present image");
+        device!(core)
+            .device_wait_idle()
+            .expect("Failed to wait idle");
     }
-}
-
-unsafe {
-    device!(core)
-        .device_wait_idle()
-        .expect("Failed to wait idle");
-}
 
     board.destruct(core.get_device());
     user_interface.destroy(core.get_device());
