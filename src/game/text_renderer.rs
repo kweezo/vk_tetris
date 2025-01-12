@@ -29,7 +29,7 @@ impl<'a> TextRenderer{
     }
 
     fn load_font_atlas(device: &Device, command_pool: &CommandPool, char_count: u32, starting_offset: u32) -> (Texture, Buffer){
-        let dat: Vec<u8> = fs::read("Super Cartoon.ttf").expect("Failed to read font.ttf");
+        let dat: Vec<u8> = fs::read("font.ttf").expect("Failed to read font.ttf");
 
         let mut font_info = stbtt_fontinfo::default();
         unsafe { assert!(stbtt_InitFont(&mut font_info, dat.as_ptr(), 0) != 0, "Failed to parse the font") }; 
