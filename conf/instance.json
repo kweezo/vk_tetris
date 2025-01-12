@@ -1,0 +1,10 @@
+{
+    "required_extensions": [
+        "VK_EXT_debug_utils"
+    ],
+    "optional_extensions": [],
+    "validation_layers": [
+        "VK_LAYER_KHRONOS_validation"
+    ],
+    "enable_layers": true
+}
