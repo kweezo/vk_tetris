@@ -1,7 +1,8 @@
 use super::core::*;
 use super::*;
-use ::image::open;
+use png;
 use ash::vk;
+use std::fs::File;
 
 pub struct Texture {
     image: Image,
@@ -11,26 +12,22 @@ pub struct Texture {
 
 impl Texture {
     pub fn new(path: &str, device: &Device, command_buffer: &mut CommandBuffer) -> Option<Texture> {
-        let image_raw = match open(path) {
-            Ok(img) => img.into_rgba8(),
-            Err(e) => {
-                eprintln!("WARNING: Failed to open image {path}, because {e}");
-                return None;
-            }
-        };
 
-        let data = unsafe {
-            std::slice::from_raw_parts(
-                image_raw.as_ptr(),
-                (image_raw.width() * image_raw.height() * 4) as usize,
-            )
-        };
+        let decoder = png::Decoder::new(File::open(path).expect("Failed to open texture path"));
+
+        let mut reader = decoder.read_info().expect("Failed to parse the png");
+
+        let mut data_raw = vec![0; reader.output_buffer_size()];
+
+        let info = reader.next_frame(&mut data_raw).unwrap();
+
+        let data = &data_raw[..info.buffer_size()]; 
 
         let image = Image::new(
             device,
             command_buffer,
-            image_raw.width(),
-            image_raw.height(),
+            info.width,
+            info.height,
             image::Type::SAMPLED,
             vk::Format::R8G8B8A8_SRGB,
             data,

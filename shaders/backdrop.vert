@@ -17,7 +17,7 @@ layout(location = 1) out flat int texID;
 void main() {
     float scale_factor = 25;
 
-    gl_Position = proj.proj * vec4(inVertex.x * 1280, inVertex.y * 720, -0.5, 1.0); 
+    gl_Position = proj.proj * vec4(inVertex.x * 720, inVertex.y * 1280, -0.5, 1.0); 
 
     texCoords = inVertex; 
     texID = pc_texID;

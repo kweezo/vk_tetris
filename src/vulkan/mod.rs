@@ -1,5 +1,5 @@
 pub mod core;
-pub use core::Core;
+pub use core::*;
 
 mod shader;
 pub use shader::Shader;

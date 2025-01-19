@@ -22,7 +22,7 @@ macro_rules! device {
 }
 
 fn main() {
-    let mut window = Window::new(1280, 720, "le title");
+    let mut window = Window::new(720, 1280, "le title");
 
     let core = vulkan::Core::new(&window);
 
@@ -53,6 +53,7 @@ fn main() {
     let binding_sizes = [
         descriptor::DescriptorCreateInfo{descriptor_type: vk::DescriptorType::UNIFORM_BUFFER, size: 1, binding : 6},
         descriptor::DescriptorCreateInfo{descriptor_type: vk::DescriptorType::UNIFORM_BUFFER, size: 1, binding : 7},
+        descriptor::DescriptorCreateInfo{descriptor_type: vk::DescriptorType::STORAGE_BUFFER, size: 1, binding : 8},
         descriptor::DescriptorCreateInfo{descriptor_type: vk::DescriptorType::COMBINED_IMAGE_SAMPLER, size: 3, binding: 1},
     ];
 
@@ -62,13 +63,13 @@ fn main() {
     let (ui_vertex_inputs, _ui_vertex_input_data) = UserInterface::get_required_vertex_input_states();
 
     let mut vertex_inputs = Vec::<vk::PipelineVertexInputStateCreateInfo>::with_capacity(board_vertex_inputs.len() + ui_vertex_inputs.len());
-    vertex_inputs.extend_from_slice(&board_vertex_inputs);
     vertex_inputs.extend_from_slice(&ui_vertex_inputs);
+    vertex_inputs.extend_from_slice(&board_vertex_inputs);
 
 
     let mut render_pass = RenderPass::new(
         core.get_device(),
-        &[tetromino_shader, backdrop_shader, text_shader],
+        &[backdrop_shader,  text_shader, tetromino_shader],
         core.get_swapchain(),
         &vertex_inputs.as_slice(),
         descriptor_set.get_layout(),
@@ -88,12 +89,50 @@ fn main() {
         ),
     );
 
-    let mut user_interface = UserInterface::new(core.get_device(), &command_pool, "background.png");
+    let mut user_interface = UserInterface::new(core.get_device(), &command_pool, "background.png", board.get_score());
+
+    {
+
+        let (board_write_sets, _write_infos) = board.get_descriptor_write_sets(&descriptor_set);
+
+        let (ui_write_sets, _write_infos) =
+            user_interface.get_descriptor_write_sets(&descriptor_set);
+
+        let (text_renderer_write_sets, _text_renderer_write_infos) = 
+            user_interface.get_text_renderer_descriptor_sets(&descriptor_set);
+
+        let mut write_sets = Vec::with_capacity(board_write_sets.len() + ui_write_sets.len() + text_renderer_write_sets.len());
+        write_sets.extend_from_slice(&board_write_sets);
+        write_sets.extend_from_slice(&ui_write_sets);
+        write_sets.extend_from_slice(&text_renderer_write_sets);
+
+        descriptor_set.update(core.get_device(), &write_sets.as_slice());
+    }
 
     while !window.get_window_handle().should_close() {
         window.get_glfw_context_mut().poll_events();
 
         board.update(window.get_events());
+
+        user_interface.update(board.get_game_state());
+
+        {
+            
+            if board.instance_buffer_exists() {
+
+                let (board_write_sets, _write_infos) = board.get_instance_descriptor_write_sets(&descriptor_set);
+
+                let mut write_sets = Vec::with_capacity(board_write_sets.len());
+
+                write_sets.extend_from_slice(&board_write_sets);
+                descriptor_set.update(core.get_device(), &write_sets.as_slice());
+            }
+
+
+        }
+
+        //RENDER
+
 
         let image_index: u32;
 
@@ -176,29 +215,15 @@ fn main() {
                 vk::SubpassContents::INLINE,
             );
 
-            board.draw(core.get_device(), &render_pass, &command_buffer, 0);
 
-            let (board_write_sets, _write_infos) = board.get_descriptor_write_sets(&descriptor_set);
+            user_interface.draw(core.get_device(), &render_pass, &command_buffer, 0);
 
             device!(core).cmd_next_subpass(
                 command_buffer.get_command_buffer(),
                 vk::SubpassContents::INLINE,
             );
 
-            let (ui_write_sets, _write_infos) =
-                user_interface.get_descriptor_write_sets(&descriptor_set);
-
-            let (text_renderer_write_sets, _text_renderer_write_infos) = 
-                user_interface.get_text_renderer_descriptor_sets(&descriptor_set);
-
-            let mut write_sets = Vec::with_capacity(board_write_sets.len() + ui_write_sets.len() + text_renderer_write_sets.len());
-            write_sets.extend_from_slice(&board_write_sets);
-            write_sets.extend_from_slice(&ui_write_sets);
-            write_sets.extend_from_slice(&text_renderer_write_sets);
-
-            descriptor_set.update(core.get_device(), &write_sets.as_slice());
-
-            user_interface.draw(core.get_device(), &render_pass, &command_buffer, 1);
+            board.draw(core.get_device(), &render_pass, &command_buffer, 2);
 
 
 
@@ -238,6 +263,9 @@ fn main() {
                 .queue_present(core.get_device().get_queue(), &present_info)
                 .expect("Failed to present image");
         }
+
+
+
     }
 
     unsafe {
@@ -245,8 +273,6 @@ fn main() {
             .device_wait_idle()
             .expect("Failed to wait idle");
     }
-
-    //TODO FIX
 
     board.destruct(core.get_device());
     user_interface.destroy(core.get_device());

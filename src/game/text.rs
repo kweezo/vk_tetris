@@ -35,6 +35,7 @@ impl Text {
         if self.text_len != text_raw.len() {
             self.text_len = text_raw.len();
 
+            self.text_buffer.destroy(device);
             self.text_buffer = Text::upload_text_to_buffer(device, command_buffer, text_renderer, text_raw);
 
             return

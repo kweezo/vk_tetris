@@ -1,6 +1,6 @@
 use ash::vk;
 use descriptor::{DescriptorInfo, DescriptorSet};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::{sync::Mutex, time::{SystemTime, UNIX_EPOCH}};
 use vk_mem::Alloc;
 
 use std::{
@@ -16,6 +16,12 @@ use bytemuck::bytes_of;
 
 use rand::prelude::*;
 
+
+#[derive(Clone, Copy)]
+pub enum GameState{
+    RUNNING,
+    END
+}
 
 
 fn transfer_cleanup(
@@ -63,6 +69,10 @@ pub struct Board {
     fall_interval: u32,
     previous_interval: u128,
 
+    score: Arc<Mutex<u32>>,
+
+    game_state: GameState,
+
     rng: ThreadRng,
 }
 
@@ -87,7 +97,7 @@ impl<'a> Board {
         let mut rng = thread_rng();
 
         let mut tetromino = Tetromino::new((3, 2), [255; 3], TetrominoShape::rand(&mut rng));
-        tetromino.translate((0, 0), &[[[0; 3]; PLAYFIELD_WIDTH]; PLAYFIELD_HEIGHT]);
+        tetromino.translate((0, 0), &[[[0; 4]; PLAYFIELD_WIDTH]; PLAYFIELD_HEIGHT]);
 
         Board {
             tetromino,
@@ -101,10 +111,12 @@ impl<'a> Board {
             tetromino_tex: buffers.3,
             transfer_finished_fence: Fence::new(device, false),
             transfer_finished_thread_handle: None,
-            grid: [[[0; 3]; PLAYFIELD_WIDTH]; PLAYFIELD_HEIGHT],
+            grid: [[[0; 4]; PLAYFIELD_WIDTH]; PLAYFIELD_HEIGHT],
             fall_interval: 1500,
             previous_interval: 0,
             rng,
+            game_state: GameState::RUNNING,
+            score: Arc::new(Mutex::new(0))
         }
     }
 
@@ -217,13 +229,15 @@ impl<'a> Board {
         render_pass: &RenderPass,
         command_buffer: &CommandBuffer,
         subpass_index: u32,
-        push_constants: &[u8],
         instance_count: u32,
     ) {
         let offset = 0u32;
 
+        let push_constants = [[0u8; 4], instance_count.to_ne_bytes()].concat();
+
         unsafe {
-            device.get_ash_device().cmd_bind_pipeline(                command_buffer.get_command_buffer(),
+            device.get_ash_device().cmd_bind_pipeline( 
+                command_buffer.get_command_buffer(),
                 vk::PipelineBindPoint::GRAPHICS,
                 render_pass.get_pipeline(subpass_index as usize),
             );
@@ -233,7 +247,7 @@ impl<'a> Board {
                 render_pass.get_layout(),
                 vk::ShaderStageFlags::ALL,
                 offset,
-                push_constants,
+                &push_constants,
             );
 
             device.get_ash_device().cmd_bind_vertex_buffers(
@@ -241,9 +255,8 @@ impl<'a> Board {
                 0,
                 &[
                     self.vertex_buffer.get_buffer(),
-                    self.instance_buffer.as_ref().unwrap().get_buffer(),
                 ],
-                &[0, 0],
+                &[0],
             );
             device.get_ash_device().cmd_bind_index_buffer(
                 command_buffer.get_command_buffer(),
@@ -262,32 +275,62 @@ impl<'a> Board {
         }
     }
 
-    fn get_instance_data(&self) -> Vec<u8> {
-        let mut data = Vec::<u8>::with_capacity(PLAYFIELD_HEIGHT * PLAYFIELD_WIDTH * 5);
+    fn get_instance_data(&mut self) -> Vec<u8> {
+        let mut data = Vec::<u8>::with_capacity(PLAYFIELD_HEIGHT * PLAYFIELD_WIDTH * 20);
 
         for y in 0..self.grid.len() {
             for x in 0..self.grid[y].len() {
-                if self.grid[y][x] == [0; 3] {
+                if self.grid[y][x] == [0; 4] {
                     continue;
                 }
 
                 data.extend_from_slice(&[
-                    x as u8,
-                    y as u8,
-                    self.grid[y][x][0],
-                    self.grid[y][x][1],
-                    self.grid[y][x][2],
-                ]);
-
-                data.extend_from_slice(&[0; 3]); // padding
+                    (x as u32).to_ne_bytes(),
+                    (y as u32).to_ne_bytes(),
+                    0u32.to_ne_bytes(),
+                    0u32.to_ne_bytes(),
+                    (self.grid[y][x][0] as u32).to_ne_bytes(),
+                    (self.grid[y][x][1] as u32).to_ne_bytes(),
+                    (self.grid[y][x][2] as u32).to_ne_bytes(),
+                    (self.grid[y][x][3] as u32).to_ne_bytes(),
+                ].concat());
             }
         }
 
         for pos in self.tetromino.get_data().chunks(2) {
-            data.extend_from_slice(&[pos[0] as u8, pos[1] as u8]);
-            data.extend_from_slice(&self.tetromino.get_color());
+            data.extend_from_slice(&[
+                (pos[0] as u32).to_ne_bytes(),
+                (pos[1] as u32).to_ne_bytes(),
+                0u32.to_ne_bytes(),
+                0u32.to_ne_bytes(),
+            ].concat());
 
-            data.extend_from_slice(&[0; 3]);
+            let color = self.tetromino.get_color();
+
+            data.extend_from_slice(&[
+                (color[0] as u32).to_ne_bytes(),
+                (color[1] as u32).to_ne_bytes(),
+                (color[2] as u32).to_ne_bytes(),
+                (color[3] as u32).to_ne_bytes(),
+            ].concat());
+        }
+
+        for pos in self.tetromino.get_ghost_data(&self.grid).chunks(2) {
+            data.extend_from_slice(&[
+                (pos[0] as u32).to_ne_bytes(),
+                (pos[1] as u32).to_ne_bytes(),
+                0u32.to_ne_bytes(),
+                0u32.to_ne_bytes(),
+            ].concat());
+
+            let color = self.tetromino.get_ghost_color();
+
+            data.extend_from_slice(&[
+                (color[0] as u32).to_ne_bytes(),
+                (color[1] as u32).to_ne_bytes(),
+                (color[2] as u32).to_ne_bytes(),
+                (color[3] as u32).to_ne_bytes(),
+            ].concat());
         }
 
         data.shrink_to_fit();
@@ -313,7 +356,7 @@ impl<'a> Board {
                 device,
                 &mut self.transfer_command_buffer.write().unwrap(),
                 data.as_slice(),
-                BufferType::Vertex,
+                BufferType::Storage,
                 false,
             ));
         } else {
@@ -336,7 +379,7 @@ impl<'a> Board {
                 return false;
             }
 
-            if self.grid[offset_y][offset_x] != [0; 3] {
+            if self.grid[offset_y][offset_x] != [0; 4] {
                 return true;
             }
         }
@@ -381,6 +424,15 @@ impl<'a> Board {
                         .as_millis();
                 }
 
+                glfw::WindowEvent::Key(glfw::Key::Space, _, glfw::Action::Press, _) => {
+                    while self.tetromino.translate((0, 1), &self.grid) {}
+                    self.handle_block_collision();
+                },
+
+                glfw::WindowEvent::Key(glfw::Key::N, _, glfw::Action::Press, _) => {
+                    self.reset_game();
+                },
+
                 _ => (),
             }
         }
@@ -390,8 +442,23 @@ impl<'a> Board {
         //self.tetromino.translate((0, 1), &self.grid);
     }
 
+    fn reset_game(&mut self) {
+        self.grid = [[[0; 4]; PLAYFIELD_WIDTH]; PLAYFIELD_HEIGHT];
+        self.game_state = GameState::RUNNING;
+        
+        self.add_tetromino(0, 0);
+
+    }
+
     fn handle_block_collision(&mut self) {
+
+        if self.tetromino.is_topped_out() {
+            self.game_state = GameState::END;
+            return;
+        }
+
         if !self.tetromino.is_grounded(&self.grid) {
+            self.game_state = GameState::RUNNING;
             return;
         }
 
@@ -399,7 +466,11 @@ impl<'a> Board {
             self.grid[pos[1] as usize][pos[0] as usize] = self.tetromino.get_color();
         }
         
-        self.add_tetromino(2, 0);
+        self.add_tetromino(2, 2);
+
+        if !self.tetromino.is_valid(&&self.grid) {
+            self.game_state = GameState::END;
+        }
     }
 
     fn handle_line_clear(&mut self) {
@@ -407,7 +478,7 @@ impl<'a> Board {
             let mut is_full = true;
 
             for x in 0..PLAYFIELD_WIDTH {
-                if self.grid[y][x] == [0; 3] {
+                if self.grid[y][x] == [0; 4] {
                     is_full = false;
                 }
             }
@@ -415,6 +486,8 @@ impl<'a> Board {
             if !is_full {
                 continue;
             }
+
+            *self.score.lock().expect("Failed to lock") +=  ((PLAYFIELD_HEIGHT - y).pow(2) * 100) as u32;
 
             for y_new in (0..y).rev() {
                 self.grid[y_new + 1] = self.grid[y_new];
@@ -436,6 +509,7 @@ impl<'a> Board {
 
         self.handle_block_collision();
         self.handle_gravity();
+
     }
 
     pub fn update(&mut self, events: &glfw::GlfwReceiver<(f64, glfw::WindowEvent)>) {
@@ -462,8 +536,7 @@ impl<'a> Board {
             render_pass,
             command_buffer,
             subpass_index,
-            &[0; 128],
-            (data.len() / 8) as u32,
+            (data.len() / 32) as u32,
         );
 
         CommandBuffer::submit(
@@ -501,32 +574,45 @@ impl<'a> Board {
             self.get_random_color(),
             TetrominoShape::rand(&mut self.rng),
         );
-        self.tetromino.translate((0, 0), &self.grid);
+
+        let mut scalar = 0;
+
+
+        while !self.tetromino.is_in_bounds() {
+            self.tetromino.translate((scalar, scalar), &self.grid);
+            scalar += 1;
+        }
+  
     }
 
     pub fn get_tetromino_tex(&self) -> &Texture {
         &self.tetromino_tex
     }
 
+    pub fn get_score(&self) -> Arc<Mutex<u32>> {
+        self.score.clone()
+    }
+
     pub fn get_descriptor_write_sets(
         &'a self,
         set: &'a DescriptorSet,
-    ) -> ([vk::WriteDescriptorSet; 2], Pin<Box<[DescriptorInfo; 2]>>) {
+    ) -> ([vk::WriteDescriptorSet<'a>; 2], Pin<Box<[DescriptorInfo; 2]>>) {
         let image_info = vk::DescriptorImageInfo {
             image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
             image_view: self.tetromino_tex.get_image_view(),
             sampler: self.tetromino_tex.get_sampler(),
         };
 
-        let buffer_info = vk::DescriptorBufferInfo {
+        let buffer_info_projection = vk::DescriptorBufferInfo {
             buffer: self.projection_uniform.get_buffer(),
             offset: 0,
             range: vk::WHOLE_SIZE,
         };
 
+
         let descriptor_infos = Pin::new(Box::new([
             descriptor::DescriptorInfo::Image(vec![image_info]),
-            descriptor::DescriptorInfo::Buffer(vec![buffer_info]),
+            descriptor::DescriptorInfo::Buffer(vec![buffer_info_projection]),
         ]));
 
         let image_write_set = set.create_write_set(
@@ -537,7 +623,7 @@ impl<'a> Board {
             1
         );
 
-        let buffer_write_set = set.create_write_set(
+        let buffer_write_set_projection = set.create_write_set(
             &descriptor_infos.as_ref()[1],
             vk::DescriptorType::UNIFORM_BUFFER,
             0,
@@ -545,11 +631,49 @@ impl<'a> Board {
             6
         );
 
-        ([image_write_set, buffer_write_set], descriptor_infos)
+
+        ([image_write_set, buffer_write_set_projection], descriptor_infos)
+    }
+
+    pub fn instance_buffer_exists(&self) -> bool {
+        match self.instance_buffer {
+            Some(_) => true,
+            None => false,
+        }
+    }
+
+    pub fn get_instance_descriptor_write_sets(
+        &'a self,
+        set: &'a DescriptorSet,
+    ) -> ([vk::WriteDescriptorSet<'a>; 1], Pin<Box<[DescriptorInfo; 1]>>) {
+
+        let buffer_info_instance = vk::DescriptorBufferInfo {
+            buffer: self.instance_buffer.as_ref().unwrap().get_buffer(),
+            offset: 0,
+            range: vk::WHOLE_SIZE,
+        };
+
+        let descriptor_infos = Pin::new(Box::new([
+            descriptor::DescriptorInfo::Buffer(vec![buffer_info_instance]),
+        ]));
+
+        let buffer_write_set_instance_dat = set.create_write_set(
+            &descriptor_infos.as_ref()[0],
+            vk::DescriptorType::STORAGE_BUFFER,
+            0,
+            1,
+            8
+        );
+
+        ([buffer_write_set_instance_dat], descriptor_infos)
     }
 
     pub fn get_transfer_semaphore(&self) -> vk::Semaphore {
         self.transfer_semaphore.get_semaphore()
+    }
+
+    pub fn get_game_state(&self) -> GameState {
+        self.game_state
     }
 
     pub fn get_required_vertex_input_states() -> ([vk::PipelineVertexInputStateCreateInfo<'a>; 1], VertexInputData){
@@ -560,11 +684,6 @@ impl<'a> Board {
                 input_rate: vk::VertexInputRate::VERTEX,
             },
 
-            vk::VertexInputBindingDescription {
-                binding: 1,
-                stride: 8,
-                input_rate: vk::VertexInputRate::INSTANCE,
-            },
         ];
 
         let vertex_attributes = vec![
@@ -574,22 +693,6 @@ impl<'a> Board {
 
                 format: vk::Format::R32G32_SFLOAT,
                 offset: 0,
-            },
-
-            vk::VertexInputAttributeDescription {
-                location: 1,
-                binding: 1,
-
-                format: vk::Format::R8G8_UINT,
-                offset: 0,
-            },
-
-            vk::VertexInputAttributeDescription {
-                location: 2,
-                binding: 1,
-
-                format: vk::Format::R8G8B8_UINT,
-                offset: 2,
             },
         ];
 

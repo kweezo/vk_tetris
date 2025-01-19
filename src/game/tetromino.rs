@@ -43,7 +43,7 @@ pub struct Tetromino {
     orientation: Orientation,
 
     pos: (i8, i8),
-    color: [u8; 3],
+    color: [u8; 4],
 
     offset_index: usize
 }
@@ -54,7 +54,7 @@ impl Tetromino {
             pos,
             orientation: Orientation::ZERO,
             shape,
-            color,
+            color: [color[0], color[1], color[2], 255],
             offset_index: 0
         }
     }
@@ -126,7 +126,7 @@ impl Tetromino {
         (shape_data, offset)
     }
 
-     fn is_in_bounds(data: &[(i8, i8); 4]) -> (i8, i8){
+     fn is_in_bounds_raw(data: &[(i8, i8); 4]) -> (i8, i8){
         let (mut min_x, mut min_y, mut max_x, mut max_y) = (data[0].0, data[0].1, data[0].0, data[0].1);
 
         for block in data.iter(){
@@ -149,19 +149,41 @@ impl Tetromino {
         (0, 0)
     }
 
-    fn is_valid(data: &[(i8, i8); 4], grid: &Grid) -> bool{
+    pub fn is_in_bounds(&self) -> bool {
+        let (mut data, _) = self.get_raw_data(self.offset_index);
 
-        if Tetromino::is_in_bounds(data) != (0, 0) {
+        for pos in data.iter_mut() {
+            pos.0 += self.pos.0;
+            pos.1 += self.pos.1;
+        }
+
+        Tetromino::is_in_bounds_raw(&data) == (0, 0)
+    }
+
+    fn is_valid_raw(data: &[(i8, i8); 4], grid: &Grid) -> bool{
+
+        if Tetromino::is_in_bounds_raw(data) != (0, 0) {
             return false;
         }
 
         for block in data.iter(){
-            if grid[block.1 as usize][block.0 as usize] != [0; 3] {
+            if grid[block.1 as usize][block.0 as usize] != [0; 4] {
                 return false;
             }
         }
 
         true
+    }
+
+    pub fn is_valid(&self, grid: &Grid) -> bool {
+        let (mut data, _) = self.get_raw_data(self.offset_index);
+
+        for pos in data.iter_mut() {
+            pos.0 += self.pos.0;
+            pos.1 += self.pos.1;
+        }
+
+        Tetromino::is_valid_raw(&data, grid)
     }
 
     fn correct_position(&mut self, grid: &Grid) -> bool{
@@ -173,7 +195,7 @@ impl Tetromino {
                 block.1 += self.pos.1 + offset.1;
             }
 
-            if Tetromino::is_valid(&data, grid){
+            if Tetromino::is_valid_raw(&data, grid){
                 self.offset_index = i;
 
                 return true;
@@ -183,7 +205,7 @@ impl Tetromino {
         false
     }
 
-    pub fn translate(&mut self, vec: (i8, i8), grid: &Grid) {
+    pub fn translate(&mut self, vec: (i8, i8), grid: &Grid) -> bool {
         let previous_pos = self.pos;
 
         self.pos.0 += vec.0;
@@ -195,15 +217,18 @@ impl Tetromino {
             block.1 += self.pos.1;
         }
 
-        let bounds_offset = Tetromino::is_in_bounds(&data);
+        let bounds_offset = Tetromino::is_in_bounds_raw(&data);
 
         self.pos.0 += bounds_offset.0;
         self.pos.1 += bounds_offset.1;
 
         
-        if !Tetromino::is_valid(&data, grid){
+        if !Tetromino::is_valid_raw(&data, grid){
             self.pos = previous_pos;
+            return false;
         }
+
+        return true;
     }
 
     pub fn rotate(&mut self, dir: Orientation, grid: &Grid) {
@@ -228,7 +253,7 @@ impl Tetromino {
         }
     }
 
-    pub fn get_data(&self) -> [u8; 8]{
+    pub fn get_data(&self) -> [u8; 8] {
 
         let (data, _) = Tetromino::get_raw_data(&self,self.offset_index);
 
@@ -241,24 +266,56 @@ impl Tetromino {
 
         data_unwrapped 
     }
- 
+
+    pub fn get_ghost_data(&mut self, grid: &Grid) -> [u8; 8] {
+        let prev_pos = self.pos;
+
+        while self.translate((0, 1), grid) {}
+
+        let data = self.get_data();
+
+        self.pos = prev_pos;
+
+        data
+    }
+
+    pub fn is_topped_out(&self) -> bool {
+        let (mut data, _) = Tetromino::get_raw_data(&self, self.offset_index);
+
+        for block in data.iter_mut() {
+            block.0 += self.pos.0;
+            block.1 += self.pos.1; 
+        }
+
+        for pos in data.iter() {
+            if pos.1 < 0 {
+                return true;
+            }
+        }
+
+        false
+    }
 
     pub fn is_grounded(&self, grid: &Grid) -> bool{
         let (mut data, _) = Tetromino::get_raw_data(&self, self.offset_index);
 
         for block in data.iter_mut() {
             block.0 += self.pos.0;
-            block.1 += self.pos.1 + 1; //TODO NO WORKY WRKY
+            block.1 += self.pos.1 + 1; 
         }
 
-        if Tetromino::is_valid(&data, grid) {
+        if Tetromino::is_valid_raw(&data, grid) {
             return false;
         }
 
         true
     }
 
-    pub fn get_color(&self) -> [u8; 3] {
+    pub fn get_color(&self) -> [u8; 4] {
         self.color
+    }
+
+    pub fn get_ghost_color(&self) -> [u8; 4] {
+        [self.color[0], self.color[1], self.color[2], 20]
     }
 }

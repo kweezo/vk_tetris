@@ -213,8 +213,18 @@ impl RenderPass {
         };
 
         let color_blend_attachment_state = vk::PipelineColorBlendAttachmentState {
-            blend_enable: false as u32,
+            blend_enable: true as u32,
             color_write_mask: vk::ColorComponentFlags::RGBA,
+            
+            src_color_blend_factor: vk::BlendFactor::SRC_ALPHA,
+            dst_color_blend_factor: vk::BlendFactor::ONE_MINUS_SRC_ALPHA,
+
+            src_alpha_blend_factor: vk::BlendFactor::ONE,
+            dst_alpha_blend_factor: vk::BlendFactor::ZERO,
+
+            color_blend_op: vk::BlendOp::ADD,
+            alpha_blend_op: vk::BlendOp::ADD,
+
             ..Default::default()
         };
 
@@ -226,7 +236,7 @@ impl RenderPass {
             ..Default::default()
         };
 
-        let dynamic_states = [/*vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR*/];
+        let dynamic_states = [/*vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR cant be assed lmao*/];
 
         let dynamic_state = vk::PipelineDynamicStateCreateInfo {
             s_type: vk::StructureType::PIPELINE_DYNAMIC_STATE_CREATE_INFO,

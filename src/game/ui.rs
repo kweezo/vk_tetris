@@ -1,35 +1,49 @@
 use crate::{core::Device, types::*};
 use ash::vk;
 use bytemuck::bytes_of;
-use game::text_renderer;
 use crate::{descriptor::{DescriptorInfo, DescriptorSet}, *};
-use std::pin::Pin;
-use super::TextRenderer;
+use std::{pin::Pin, sync::{Arc, Mutex}};
+use super::*;
 
 pub struct UserInterface {
     backdrop_tex: Texture,
 
     vertex_buffer: Buffer,
     index_buffer: Buffer,
-    text_buffer: Buffer,
 
-    text_renderer: TextRenderer
+    text_manager: TextManager,
+
+    score_text: Text,
+    end_text: Text,
+
+    game_state: GameState,
+
+    score: Arc<Mutex<u32>>
 }
 
 impl<'a> UserInterface {
-    pub fn new(device: &Device, command_pool: &CommandPool, backdrop_path: &str) -> UserInterface {
-        let text_renderer = TextRenderer::new(device, command_pool);
-        let text_data = text_renderer.get_data_for_str("Hello, World!");
+    pub fn new(device: &Device, command_pool: &CommandPool, backdrop_path: &str, score: Arc<Mutex<u32>>) -> UserInterface {
+        let mut text_manager = TextManager::new(device, command_pool);
 
-        let buffers = UserInterface::initialize_buffers(device, command_pool, backdrop_path, text_data);
+        let buffers = UserInterface::initialize_buffers(device, command_pool, backdrop_path);
 
+        let mut texts = text_manager.create_texts(device, &[
+            ("0", 100.0f32, (50, 900)),
+            ("BETA MALE", 50.0f32, (150, 300)),
+        ]);
+
+        let score_text = texts.remove(0);
+        let end_text = texts.remove(0);
 
         UserInterface {
             vertex_buffer: buffers.0,
             index_buffer: buffers.1,
-            text_buffer: buffers.2,
-            backdrop_tex: buffers.3,
-            text_renderer
+            backdrop_tex: buffers.2,
+            text_manager,
+            score_text,
+            end_text,
+            game_state: GameState::RUNNING,
+            score
         }
     }
 
@@ -39,8 +53,7 @@ impl<'a> UserInterface {
         device: &Device,
         command_pool: &CommandPool,
         backdrop_path: &str,
-        text_data: Vec<u8>
-    ) -> (Buffer, Buffer, Buffer, Texture) {
+    ) -> (Buffer, Buffer, Texture) {
         let indices: [u16; 6] = [0, 1, 2, 1, 2, 3];
         let vertices: [f32; 8] = [0f32, 0f32, 0f32, 1f32, 1f32, 0f32, 1f32, 1f32];
 
@@ -67,14 +80,6 @@ impl<'a> UserInterface {
             BufferType::Index,
             false,
         );
-
-        let text_buffer = Buffer::new(
-            device,
-            &mut command_buffer,
-            &text_data.as_slice(),
-            BufferType::Vertex,
-            false);
-
 
         let backdrop_texture = Texture::new(backdrop_path, device, &mut command_buffer)
             .expect("Failed to load the backdrop texture");
@@ -108,25 +113,48 @@ impl<'a> UserInterface {
 
         command_buffer.cleanup(device);
 
-        (vertex_buffer, index_buffer, text_buffer, backdrop_texture)
+        (vertex_buffer, index_buffer, backdrop_texture)
     }
 
+    pub fn update(&mut self, state: GameState) {
+        self.game_state = state;
+    }
+
+
     pub fn draw(
-        &self,
+        &mut self,
         device: &Device,
         render_pass: &RenderPass,
         command_buffer: &CommandBuffer,
         subpass_index: u32,
     ) {
         self.draw_backdrop(device, render_pass, command_buffer, subpass_index);
+        self.draw_texts(device, render_pass, command_buffer, subpass_index+1);
 
-        self.text_renderer.prepare_text_renderer(device, command_buffer, &self.vertex_buffer, &self.index_buffer,
-             render_pass, subpass_index+1);
-
-        self.text_renderer.render_text(device, command_buffer, render_pass, &self.text_buffer, text_renderer::RenderInfo { char_count: 13, scale: 50f32,  pos: (10, 10) });
     }
 
-    pub fn draw_backdrop(
+    fn draw_texts(
+        &mut self,
+        device: &Device,
+        render_pass: &RenderPass,
+        command_buffer: &CommandBuffer,
+        subpass_index: u32) {
+
+        self.text_manager.change_texts(device, &mut [(&mut self.score_text, &(*self.score.lock().expect("Failed to lock mutex womp womp").to_string()))]);
+
+        self.text_manager.get_text_renderer().prepare_text_renderer(device, command_buffer, &self.vertex_buffer, &self.index_buffer,
+             render_pass, subpass_index);
+            
+        self.score_text.draw(device, command_buffer, &self.text_manager.get_text_renderer(), render_pass);
+
+        if matches!(self.game_state, GameState::END) {
+            self.end_text.draw(device, command_buffer, &self.text_manager.get_text_renderer(), render_pass);
+        }
+    }
+
+
+
+    fn draw_backdrop(
         &self,
         device: &Device,
         render_pass: &RenderPass,
@@ -179,7 +207,7 @@ impl<'a> UserInterface {
     pub fn get_descriptor_write_sets(
         &'a self,
         set: &'a DescriptorSet,
-    ) -> ([vk::WriteDescriptorSet; 1], Pin<Box<[DescriptorInfo; 1]>>) {
+    ) -> ([vk::WriteDescriptorSet<'a>; 1], Pin<Box<[DescriptorInfo; 1]>>) {
 
         let image_info = vk::DescriptorImageInfo {
             image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
@@ -203,8 +231,8 @@ impl<'a> UserInterface {
     pub fn get_text_renderer_descriptor_sets( 
         &'a self,
         set: &'a DescriptorSet,
-    ) -> ([vk::WriteDescriptorSet; 2], Pin<Box<[DescriptorInfo; 2]>>) {
-        self.text_renderer.get_descriptor_write_sets(set)
+    ) -> ([vk::WriteDescriptorSet<'a>; 1], Pin<Box<[DescriptorInfo; 1]>>) {
+        self.text_manager.get_text_renderer().get_descriptor_write_sets(set)
     }
 
     pub fn get_required_vertex_input_states() -> ([vk::PipelineVertexInputStateCreateInfo<'a>; 2], VertexInputData){
@@ -217,7 +245,7 @@ impl<'a> UserInterface {
 
             vk::VertexInputBindingDescription {
                 binding: 1,
-                stride: 1,
+                stride: 8,
                 input_rate: vk::VertexInputRate::INSTANCE,
             },
         ];
@@ -237,6 +265,14 @@ impl<'a> UserInterface {
 
                 format: vk::Format::R8_UINT,
                 offset: 0,
+            },
+
+            vk::VertexInputAttributeDescription {
+                location: 2,
+                binding: 1,
+
+                format: vk::Format::R32_SFLOAT,
+                offset: 4,
             },
  
         ];
@@ -273,7 +309,8 @@ impl<'a> UserInterface {
         self.vertex_buffer.destroy(device);
         self.index_buffer.destroy(device);
         self.backdrop_tex.destroy(device);
-        self.text_renderer.destroy(device);
-        self.text_buffer.destroy(device);
+        self.score_text.destroy(device);
+        self.end_text.destroy(device);
+        self.text_manager.destroy(device);
     }
 }

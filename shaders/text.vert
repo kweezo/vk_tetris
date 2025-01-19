@@ -2,6 +2,7 @@
 
 layout(location = 0) in vec2 inVertex;
 layout(location = 1) in uint offset;
+layout(location = 2) in float padding;
 
 layout(push_constant) uniform pc{
     uint pc_texID;
@@ -13,10 +14,6 @@ layout(push_constant) uniform pc{
 layout(binding = 6) uniform proj_u{
     layout(row_major) mat4 proj;
 } proj; 
-
-layout(binding = 7) uniform offsets_u{
-    vec2 offsets[93];
-} offsets; 
 
 
 layout(location = 0) out vec2 texCoords;
@@ -35,5 +32,6 @@ void main() {
         return;
     }
 
-    gl_Position = proj.proj * vec4(vec2(inVertex*scale_factor) + vec2(pos.x + gl_InstanceIndex * scale_factor, pos.y) , -0.2, 1.0); 
+    gl_Position = proj.proj * vec4(vec2(inVertex*scale_factor) + vec2(pos.x + gl_InstanceIndex * scale_factor * 1.1 - padding * scale_factor, pos.y),
+     -0.1, 1.0); 
 }

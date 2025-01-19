@@ -1,12 +1,12 @@
 use crate::{*, core::Device};
 use stb_truetype_rust::*;
-use std::{fs, pin::Pin, ptr::copy_nonoverlapping, slice::from_raw_parts};
+use std::{fs, pin::Pin, ptr::copy_nonoverlapping};
 use descriptor::DescriptorInfo;
 
 
 pub struct TextRenderer{
     font_atlas_tex: Texture,
-    offset_table_buffer: Buffer,
+    paddings: Vec<f32>,
     char_count: u32,
     starting_offset: u32,
 }
@@ -23,26 +23,28 @@ impl<'a> TextRenderer{
         let char_count = 93;
         let starting_offset = 33;
 
-        let (font_atlas_tex, offset_table_buffer)= TextRenderer::load_font_atlas(device, command_pool, char_count, starting_offset);
+        let (font_atlas_tex, paddings)= TextRenderer::load_font_atlas(device, command_pool, char_count, starting_offset);
 
-        TextRenderer { font_atlas_tex, char_count: char_count, starting_offset, offset_table_buffer}
+        TextRenderer { font_atlas_tex, char_count: char_count, starting_offset, paddings}
     }
 
-    fn load_font_atlas(device: &Device, command_pool: &CommandPool, char_count: u32, starting_offset: u32) -> (Texture, Buffer){
-        let dat: Vec<u8> = fs::read("font.ttf").expect("Failed to read font.ttf");
+    fn load_font_atlas(device: &Device, command_pool: &CommandPool, char_count: u32, starting_offset: u32) -> (Texture, Vec<f32>){
+        let dat: Vec<u8> = fs::read("font.otf").expect("Failed to read font.ttf");
 
         let mut font_info = stbtt_fontinfo::default();
         unsafe { assert!(stbtt_InitFont(&mut font_info, dat.as_ptr(), 0) != 0, "Failed to parse the font") }; 
             
         let (mut max_width, mut max_height) = (0i32, 0i32);
 
-        let mut offset_table = Vec::<f32>::with_capacity(char_count as usize);
+        let mut paddings = Vec::<f32>::with_capacity(char_count as usize);
+
+        let scale = 0.3f32;
 
         //get the max spacing for characters
         for i in 33..starting_offset + char_count{
             let (mut x0, mut y0, mut x1, mut y1) = (0i32, 032, 0i32, 0i32);
 
-            unsafe {stbtt_GetCodepointBitmapBox(&mut font_info, i as i32, 0.3f32, 0.3f32, &mut x0, &mut y0, &mut x1, &mut y1); }
+            unsafe {stbtt_GetCodepointBitmapBox(&mut font_info, i as i32, scale, scale, &mut x0, &mut y0, &mut x1, &mut y1); }
 
             let width = x1 - x0;
             let height = y1 - y0;
@@ -57,7 +59,7 @@ impl<'a> TextRenderer{
         //splice the character bitmaps together
         for (i, c) in (starting_offset..char_count + starting_offset).enumerate(){
             let (mut width, mut height, mut xoff, mut yoff) = (0, 0, 0, 0);
-            let bmp_ptr = unsafe { stbtt_GetCodepointBitmap(&mut font_info, 0.3f32, 0.3f32,
+            let bmp_ptr = unsafe { stbtt_GetCodepointBitmap(&mut font_info, scale, scale,
                  c as i32, &mut width, &mut height, &mut xoff, &mut yoff) };
 
             assert!(bmp_ptr != std::ptr::null_mut(), "Failed to get the bitmap for char {c} (bmp_ptr is null)");
@@ -77,12 +79,13 @@ impl<'a> TextRenderer{
                 let starting_offset = offset + (max_width * y * char_count as i32) as usize + padding;
 
                 pixels.splice(starting_offset..starting_offset + width as usize,
-                     bmp[(i as i32 * width) as usize..(i as i32 *width + width) as usize].iter().cloned());
+                     bmp[(i as i32 * width) as usize..(i as i32 * width + width) as usize].iter().cloned());
             }
 
-            offset_table.extend_from_slice(&[xoff as f32 / width as f32, yoff as f32 / height as f32]);
-            offset_table.extend_from_slice(&[0f32; 2]);
+            paddings.push(padding as f32 / max_width as f32);
         }
+
+        pixels.shrink_to_fit();
 
         let mut command_buffer = CommandBuffer::new(device, command_pool, false);
         command_buffer.begin(device, &vk::CommandBufferInheritanceInfo::default(), vk::CommandBufferUsageFlags::empty());
@@ -94,13 +97,6 @@ impl<'a> TextRenderer{
             max_width as u32 * char_count,
             max_height as u32,
             vk::Format::R8_SRGB).expect("Failed to create the font atlas texture");
-
-        let offset_table_buffer = Buffer::new(
-            device,
-            &mut command_buffer,
-            unsafe {from_raw_parts(offset_table.as_ptr() as *const u8, offset_table.len() * 4)},
-            BufferType::Uniform,
-            false);
 
         command_buffer.end(device);
 
@@ -125,21 +121,41 @@ impl<'a> TextRenderer{
 
         command_buffer.cleanup(device);
 
-        (tex, offset_table_buffer)
+        (tex, paddings)
     }
 
     pub fn get_data_for_str(&self, string: &str) -> Vec<u8> {
         let mut dat = Vec::<u8>::with_capacity(string.len());
 
-        for c in string.chars() {
+        let mut curr_padding = 0f32;
+        for (i, c) in string.chars().enumerate() {
             //let char_dat = self.char_data[c as usize - 32];
 
             if c as u32 == 32 {// space
                 dat.push(255);
+
+                dat.extend_from_slice(&[0u8; 3]);
+                dat.extend_from_slice(&1u32.to_ne_bytes());
+
+                curr_padding += 1f32;
+           
                 continue;
             } 
 
             dat.push(c as u8 - self.starting_offset as u8);
+
+
+            curr_padding += self.paddings[c as usize - self.starting_offset as usize];
+            if i != 0 {
+                if string.as_bytes()[i-1] != b' ' {
+                    curr_padding += self.paddings[string.as_bytes()[i-1] as usize - self.starting_offset as usize];
+                }
+            } 
+           
+            dat.extend_from_slice(&[0u8; 3]);
+            dat.extend_from_slice(&(curr_padding).to_ne_bytes());
+
+
         }
 
         dat
@@ -172,7 +188,7 @@ impl<'a> TextRenderer{
 
     pub fn render_text(&self, device: &Device, command_buffer: &CommandBuffer, render_pass: &RenderPass, data_buffer: &Buffer, info: RenderInfo) {
 
-        let push_constants = [self.char_count.to_ne_bytes(), info.scale.to_ne_bytes(), info.pos.0.to_ne_bytes(), info.pos.1.to_ne_bytes()].concat();
+        let push_constants = [self.char_count.to_ne_bytes(), info.scale.to_ne_bytes(), [0u8; 4], info.pos.0.to_ne_bytes(), info.pos.1.to_ne_bytes()].concat();
 
         unsafe{
 
@@ -190,7 +206,7 @@ impl<'a> TextRenderer{
       pub fn get_descriptor_write_sets(
         &'a self,
         set: &'a DescriptorSet,
-    ) -> ([vk::WriteDescriptorSet; 2], Pin<Box<[DescriptorInfo; 2]>>) {
+    ) -> ([vk::WriteDescriptorSet<'a>; 1], Pin<Box<[DescriptorInfo; 1]>>) {
 
         let image_info = vk::DescriptorImageInfo {
             image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
@@ -198,16 +214,11 @@ impl<'a> TextRenderer{
             sampler: self.font_atlas_tex.get_sampler(),
         };
 
-        let buffer_info = vk::DescriptorBufferInfo{
-            buffer: self.offset_table_buffer.get_buffer(),
-            offset: 0,
-            range: vk::WHOLE_SIZE
-        };
+
 
 
         let infos = Pin::new(Box::new(
-            [DescriptorInfo::Image(vec![image_info]),
-             DescriptorInfo::Buffer(vec![buffer_info])]));
+            [DescriptorInfo::Image(vec![image_info])]));
 
         let image_descriptor_write = set.create_write_set(
             &infos.as_ref()[0],
@@ -217,19 +228,10 @@ impl<'a> TextRenderer{
             1
         );
 
-        let buffer_descriptor_write = set.create_write_set(
-            &infos.as_ref()[1],
-            vk::DescriptorType::UNIFORM_BUFFER,
-            0, 
-            1,
-            7
-        );
-
-        ([image_descriptor_write, buffer_descriptor_write], infos)
+        ([image_descriptor_write], infos)
     }
 
     pub fn destroy(&mut self, device: &Device) {
         self.font_atlas_tex.destroy(device);
-        self.offset_table_buffer.destroy(device);
     }
 }

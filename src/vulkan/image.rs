@@ -20,6 +20,7 @@ pub enum Type {
 pub struct Image {
     image: vk::Image,
     allocation: vk_mem::Allocation,
+    destroyed: bool
 }
 
 impl Image {
@@ -32,7 +33,7 @@ impl Image {
     ) -> Image {
         let (image, allocation) = Image::create_image(device, width, height, image_type, format);
 
-        Image { image, allocation }
+        Image { image, allocation, destroyed: false }
     }
 
     pub fn new(
@@ -207,7 +208,7 @@ impl Image {
 
             ..Default::default()
         };
-
+        
         unsafe {
             device.get_ash_device().cmd_pipeline_barrier(
                 commad_buffer.get_command_buffer(),
@@ -226,10 +227,18 @@ impl Image {
     }
 
     pub fn destroy(&mut self, device: &Device) {
+        self.destroyed = true;
+
         unsafe {
             device
                 .get_allocator()
                 .destroy_image(self.image, &mut self.allocation)
         };
+    }
+}
+
+impl Drop for Image {
+    fn drop(&mut self) {
+        assert!(self.destroyed, "VMA image not freed before destruction");
     }
 }

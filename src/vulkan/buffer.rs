@@ -7,6 +7,7 @@ pub enum BufferType {
     Vertex,
     Index,
     Uniform,
+    Storage
 }
 
 pub struct Buffer {
@@ -124,6 +125,7 @@ impl Buffer {
             BufferType::Vertex => vk::BufferUsageFlags::VERTEX_BUFFER,
             BufferType::Index => vk::BufferUsageFlags::INDEX_BUFFER,
             BufferType::Uniform => vk::BufferUsageFlags::UNIFORM_BUFFER,
+            BufferType::Storage => vk::BufferUsageFlags::STORAGE_BUFFER
         };
 
         let (buffer, allocation) = Buffer::create_buffer(
@@ -217,5 +219,13 @@ impl Buffer {
                 .get_allocator()
                 .destroy_buffer(self.buffer, &mut self.allocation)
         };
+
+        self.size = 0;
+    }
+}
+
+impl Drop for Buffer {
+    fn drop(&mut self) {
+        assert!(self.size == 0, "VMA buffer not freed before destruction");
     }
 }
