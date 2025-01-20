@@ -388,7 +388,7 @@ impl<'a> Board {
     }
 
     fn get_random_color(&mut self) -> [u8; 3] {
-        match self.rng.gen_range(1..8) {
+        match self.rng.gen_range(1..7) {
             1 => [255, 0, 0],
             2 => [0, 0, 255],
             3 => [0, 255, 0],

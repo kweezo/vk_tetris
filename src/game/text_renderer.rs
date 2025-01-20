@@ -38,7 +38,7 @@ impl<'a> TextRenderer{
 
         let mut paddings = Vec::<f32>::with_capacity(char_count as usize);
 
-        let scale = 0.3f32;
+        let scale = 0.15f32;
 
         //get the max spacing for characters
         for i in 33..starting_offset + char_count{
