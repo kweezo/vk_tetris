@@ -216,7 +216,7 @@ fn main() {
             );
 
 
-            user_interface.draw(core.get_device(), &render_pass, &command_buffer, 0);
+            user_interface.draw(core.get_device(), &render_pass, &command_buffer, 0, board.get_tetromino_instance_count());
 
             device!(core).cmd_next_subpass(
                 command_buffer.get_command_buffer(),

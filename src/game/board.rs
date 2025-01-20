@@ -73,6 +73,8 @@ pub struct Board {
 
     game_state: GameState,
 
+    tetromino_instance_count: u32,
+
     rng: ThreadRng,
 }
 
@@ -114,6 +116,7 @@ impl<'a> Board {
             grid: [[[0; 4]; PLAYFIELD_WIDTH]; PLAYFIELD_HEIGHT],
             fall_interval: 1500,
             previous_interval: 0,
+            tetromino_instance_count: 0,
             rng,
             game_state: GameState::RUNNING,
             score: Arc::new(Mutex::new(0))
@@ -229,11 +232,10 @@ impl<'a> Board {
         render_pass: &RenderPass,
         command_buffer: &CommandBuffer,
         subpass_index: u32,
-        instance_count: u32,
     ) {
         let offset = 0u32;
 
-        let push_constants = [[0u8; 4], instance_count.to_ne_bytes()].concat();
+        let push_constants = [[0u8; 4], self.tetromino_instance_count.to_ne_bytes()].concat();
 
         unsafe {
             device.get_ash_device().cmd_bind_pipeline( 
@@ -267,7 +269,7 @@ impl<'a> Board {
             device.get_ash_device().cmd_draw_indexed(
                 command_buffer.get_command_buffer(),
                 6,
-                instance_count,
+                self.tetromino_instance_count,
                 0,
                 0,
                 0,
@@ -334,6 +336,8 @@ impl<'a> Board {
         }
 
         data.shrink_to_fit();
+
+        self.tetromino_instance_count = (data.len() / 32) as u32;
 
         data
     }
@@ -474,6 +478,8 @@ impl<'a> Board {
     }
 
     fn handle_line_clear(&mut self) {
+        let mut consecutive_clears = 0u8;
+
         for y in 0..PLAYFIELD_HEIGHT {
             let mut is_full = true;
 
@@ -536,7 +542,6 @@ impl<'a> Board {
             render_pass,
             command_buffer,
             subpass_index,
-            (data.len() / 32) as u32,
         );
 
         CommandBuffer::submit(
@@ -591,6 +596,10 @@ impl<'a> Board {
 
     pub fn get_score(&self) -> Arc<Mutex<u32>> {
         self.score.clone()
+    }
+
+    pub fn get_tetromino_instance_count(&self) -> u32 {
+        self.tetromino_instance_count
     }
 
     pub fn get_descriptor_write_sets(

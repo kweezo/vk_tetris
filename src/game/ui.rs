@@ -127,8 +127,9 @@ impl<'a> UserInterface {
         render_pass: &RenderPass,
         command_buffer: &CommandBuffer,
         subpass_index: u32,
+        tetromino_instance_count: u32
     ) {
-        self.draw_backdrop(device, render_pass, command_buffer, subpass_index);
+        self.draw_backdrop(device, render_pass, command_buffer, subpass_index, tetromino_instance_count);
         self.draw_texts(device, render_pass, command_buffer, subpass_index+1);
 
     }
@@ -160,8 +161,10 @@ impl<'a> UserInterface {
         render_pass: &RenderPass,
         command_buffer: &CommandBuffer,
         subpass_index: u32,
-    ) {
+        tetromino_instance_count: u32) {
         let offset = 0u32;
+
+        let push_constants = [1u32.to_ne_bytes(), tetromino_instance_count.to_ne_bytes()].concat();
 
         unsafe {
             device.get_ash_device().cmd_bind_pipeline(
@@ -175,7 +178,7 @@ impl<'a> UserInterface {
                 render_pass.get_layout(),
                 vk::ShaderStageFlags::ALL,
                 offset,
-                &1i32.to_ne_bytes(),
+                &push_constants,
             );
 
             device.get_ash_device().cmd_bind_vertex_buffers(

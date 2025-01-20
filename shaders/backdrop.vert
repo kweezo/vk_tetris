@@ -4,6 +4,7 @@ layout(location = 0) in vec2 inVertex;
 
 layout(push_constant) uniform pc{
     int pc_texID;
+    uint instance_count;
 };
 
 layout(binding = 6) uniform projection{
@@ -11,8 +12,9 @@ layout(binding = 6) uniform projection{
 } proj; 
 
 
-layout(location = 0) out vec2 texCoords;
-layout(location = 1) out flat int texID;
+layout (location = 0) out vec2 texCoords;
+layout (location = 1) out flat int texID;
+layout (location = 2) out uint o_instance_count;
 
 void main() {
     float scale_factor = 25;
@@ -21,4 +23,5 @@ void main() {
 
     texCoords = inVertex; 
     texID = pc_texID;
+    o_instance_count = instance_count;
 }

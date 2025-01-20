@@ -35,7 +35,7 @@ void main() {
 
         float dist = max(0.6 - (sqrt(dist_vec.x * dist_vec.x + dist_vec.y * dist_vec.y) - 0.5f), 0) * 0.1;
 
-        base_color += dist * col[i];
+        base_color += dist * col;
     }
 
     outColor = texture(textures[texID], texCoords) * base_color / vec4(255.0f, 255.0f, 255.0f, 255.0f);
