@@ -2,7 +2,7 @@ use rand::prelude::*;
 
 use crate::types::*;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum TetrominoShape {
     I,
     J,
@@ -44,8 +44,6 @@ pub struct Tetromino {
 
     pos: (i8, i8),
     color: [u8; 4],
-
-    offset_index: usize
 }
 
 impl Tetromino {
@@ -55,12 +53,12 @@ impl Tetromino {
             orientation: Orientation::ZERO,
             shape,
             color: [color[0], color[1], color[2], 255],
-            offset_index: 0
         }
     }
 
 
-    fn get_raw_data(&self, offset_index: usize) -> ([(i8, i8); 4], (i8, i8)){
+    fn get_raw_data(&self) -> [(i8, i8); 4] {
+
         let mut shape_data: [(i8, i8); 4] = match self.shape{
             TetrominoShape::I => [(1, 0), (0, 0), (-1, 0), (-2, 0)],
             TetrominoShape::J => [(1, -1), (1, 0), (0, 0), (-1, 0)],
@@ -70,35 +68,6 @@ impl Tetromino {
             TetrominoShape::T => [(1, 0), (0, 0), (0, -1), (-1, 0)],
             TetrominoShape::Z => [(1, -1), (0, -1), (0, 0), (-1, 0)]
         };
-
-        let offsets_i: [[(i8, i8); 5]; 4] = [ 
- 	    [(0, 0), (1, 0), (-2, 0), (1, 0), (-2, 0)],
- 	    [(1, 0), ( 0, 0), ( 0, 0), (0, 1), ( 0,-2)],
- 	    [(1, 1), (-1, 1), (2, 1), (-1, 0), (2, 0)],
- 	    [(0, 1), (0, 1), (0, 1), (0, -1), (0, 2)]];
-        
-        let offsets_o: [(i8, i8); 4] = [(0, 0), (0, -1), (-1, -1), (-1, 0)];
-
-        let offsets_other: [[(i8, i8); 5]; 4]= [
-        [(0, 0), (0, 0), (0, 0), (0, 0), (0, 0)],
-        [(0, 0), (-1, 0), (-1, -1), (0, 2), (-1, 2)],
-     	[(0, 0), (0, 0), (0, 0), (0, 0), (0, 0)],
- 	    [(0, 0), (1, 0), (1, -1), (0, 2), (1, 2)]];
-
-
-
-        let offset = match self.shape{
-            TetrominoShape::I => {
-                offsets_i[self.orientation as usize][offset_index]
-            },
-            TetrominoShape::O => {
-                offsets_o[self.orientation as usize]
-            },
-            _ => {
-                offsets_other[self.orientation as usize][offset_index]
-            }
-        };
-
 
         for block in shape_data.iter_mut(){
             match self.orientation {
@@ -118,12 +87,9 @@ impl Tetromino {
 
             }
 
-            block.0 += offset.0;
-            block.1 += offset.1;
-
         }
 
-        (shape_data, offset)
+        shape_data
     }
 
      fn is_in_bounds_raw(data: &[(i8, i8); 4]) -> (i8, i8){
@@ -150,7 +116,7 @@ impl Tetromino {
     }
 
     pub fn is_in_bounds(&self) -> bool {
-        let (mut data, _) = self.get_raw_data(self.offset_index);
+        let mut data = self.get_raw_data();
 
         for pos in data.iter_mut() {
             pos.0 += self.pos.0;
@@ -176,7 +142,7 @@ impl Tetromino {
     }
 
     pub fn is_valid(&self, grid: &Grid) -> bool {
-        let (mut data, _) = self.get_raw_data(self.offset_index);
+        let mut data = self.get_raw_data();
 
         for pos in data.iter_mut() {
             pos.0 += self.pos.0;
@@ -187,8 +153,41 @@ impl Tetromino {
     }
 
     fn correct_position(&mut self, grid: &Grid) -> bool{
+        let offsets_i: [[(i8, i8); 5]; 4] = [
+            [(0, 0), (-2, 0), (1, 0), (-2, -1), (1, 2)],
+            [(0, 0), (-1, 0), (2, 0), (-1, 2), (2, -1)],
+            [(0, 0), (2, 0), (-1, 0), (2, 1), (-1, -2)],
+            [(0, 0), (1, 0), (-2, 0), (1, -2), (-2, 1)],
+        ];
+        
+        
+        let offsets_o: [(i8, i8); 4] = [(0, 0), (0, -1), (-1, -1), (-1, 0)];
+
+        let offsets_other: [[(i8, i8); 5]; 4] = [
+            [(0, 0), (-1, 0), (-1, -1), (0, 2), (-1, 2)],
+            [(0, 0), (1, 0), (1, 1), (0, -2), (1, -2)],
+            [(0, 0), (1, 0), (1, -1), (0, 2), (1, 2)],
+            [(0, 0), (-1, 0), (-1, 1), (0, -2), (-1, -2)],
+        ];
+        
+
+
+
         for i in 0..5 {
-            let (mut data, offset) = Tetromino::get_raw_data(&self, i);
+            let mut data = Tetromino::get_raw_data(&self);
+
+
+            let offset = match self.shape{
+                TetrominoShape::I => {
+                    offsets_i[self.orientation as usize][i]
+                },
+                TetrominoShape::O => {
+                    offsets_o[self.orientation as usize]
+                },
+                _ => {
+                    offsets_other[self.orientation as usize][i]
+                }
+            };
 
             for block in data.iter_mut() {
                 block.0 += self.pos.0 + offset.0;
@@ -196,7 +195,8 @@ impl Tetromino {
             }
 
             if Tetromino::is_valid_raw(&data, grid){
-                self.offset_index = i;
+                self.pos.0 += offset.0;
+                self.pos.1 += offset.1;
 
                 return true;
             }
@@ -211,7 +211,7 @@ impl Tetromino {
         self.pos.0 += vec.0;
         self.pos.1 += vec.1;
 
-        let (mut data, _) = Tetromino::get_raw_data(&self, self.offset_index);
+        let mut data = Tetromino::get_raw_data(&self);
         for block in data.iter_mut() {
             block.0 += self.pos.0;
             block.1 += self.pos.1;
@@ -237,7 +237,7 @@ impl Tetromino {
         match self.shape {
             TetrominoShape::O => (),
             _ => {
-                let curr = (self.orientation as u32 + dir as u32) % 4;
+                let curr = (self.orientation as u32 + dir as u32) % 4; //broken as hell lmao
 
                 self.orientation = match curr{
                     0 => Orientation::ZERO,
@@ -255,7 +255,7 @@ impl Tetromino {
 
     pub fn get_data(&self) -> [u8; 8] {
 
-        let (data, _) = Tetromino::get_raw_data(&self,self.offset_index);
+        let data = Tetromino::get_raw_data(&self);
 
         let mut data_unwrapped = [0u8; 8];
 
@@ -280,7 +280,7 @@ impl Tetromino {
     }
 
     pub fn is_topped_out(&self) -> bool {
-        let (mut data, _) = Tetromino::get_raw_data(&self, self.offset_index);
+        let mut data = Tetromino::get_raw_data(&self);
 
         for block in data.iter_mut() {
             block.0 += self.pos.0;
@@ -297,7 +297,7 @@ impl Tetromino {
     }
 
     pub fn is_grounded(&self, grid: &Grid) -> bool{
-        let (mut data, _) = Tetromino::get_raw_data(&self, self.offset_index);
+        let mut data = Tetromino::get_raw_data(&self);
 
         for block in data.iter_mut() {
             block.0 += self.pos.0;

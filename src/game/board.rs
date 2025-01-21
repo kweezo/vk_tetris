@@ -493,12 +493,23 @@ impl<'a> Board {
                 continue;
             }
 
-            *self.score.lock().expect("Failed to lock") +=  ((PLAYFIELD_HEIGHT - y).pow(2) * 100) as u32;
+            consecutive_clears += 1;
 
+            
             for y_new in (0..y).rev() {
                 self.grid[y_new + 1] = self.grid[y_new];
             }
         }
+
+
+        *self.score.lock().expect("Failed to lock") +=  match consecutive_clears {
+            0 => 0,
+            1 => 100,
+            2 => 300,
+            3 => 500,
+            4 => 800,
+            _ => 2500
+        };
     }
 
     fn fixed_update(&mut self) {
