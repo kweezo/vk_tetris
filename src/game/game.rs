@@ -58,14 +58,10 @@ impl Game {
 
         Game::initialize_descriptor_set(&core, &set, &board, &user_interface);
 
-        let user_interface = UserInterface::new(core.get_device(), &command_pool, board.get_score());
-
-
         let image_acquisition_fence = Fence::new(core.get_device(), false);
         let render_finish_semaphore = Semaphore::new(core.get_device());
-
+        
         Game { window, core, render_pass, command_pool, command_buffer, set, user_interface, board, image_acquisition_fence, render_finish_semaphore }
-
     }
 
     fn load_shaders(core: &Core) -> Vec<Shader> {
@@ -87,7 +83,7 @@ impl Game {
             String::from("shaders/bin/text_frag.spv"),
         );
 
-        vec![tetromino_shader, backdrop_shader, text_shader]
+        vec![backdrop_shader, text_shader, tetromino_shader]
     }
 
     fn create_descriptor_set(core: &Core) -> DescriptorSet{
@@ -134,7 +130,7 @@ impl Game {
     }
 
     fn update_descriptor_set(&self) {
-        if self.board.instance_buffer_exists() {
+        if !self.board.instance_buffer_exists() {
             return;
         }
 
@@ -156,17 +152,9 @@ impl Game {
     }
 
     fn get_image_index(&self) -> u32 {
+        let image_index;
         unsafe{
-
-
-            device!(self)
-                .wait_for_fences(&[self.image_acquisition_fence.get_fence()], true, u64::MAX)
-                .expect("Failed to wait for the image acquisition fence");
-            device!(self)
-                .reset_fences(&[self.image_acquisition_fence.get_fence()])
-                .expect("Failed to reset the image acquisition fence");
-
-            self.core
+            image_index = self.core
             .get_swapchain()
             .get_swapchain_info()
             .swapchain_device
@@ -177,8 +165,17 @@ impl Game {
                 self.image_acquisition_fence.get_fence(),
             )
             .expect("Failed to acquire the next swapchain image")
-            .0
+            .0;
+
+            device!(self)
+                .wait_for_fences(&[self.image_acquisition_fence.get_fence()], true, u64::MAX)
+                .expect("Failed to wait for the image acquisition fence");
+            device!(self)
+                .reset_fences(&[self.image_acquisition_fence.get_fence()])
+                .expect("Failed to reset the image acquisition fence");
         }
+
+        image_index
     }
 
     fn reset_command_pool(&self) {
@@ -286,10 +283,9 @@ impl Game {
     }
 
     fn render(&mut self) {
-        self.reset_command_pool();
-
         let image_index = self.get_image_index();
 
+        self.reset_command_pool();
         self.begin_command_buffer(image_index);
 
         self.user_interface.draw(self.core.get_device(), &self.render_pass, &self.command_buffer, 0, self.board.get_tetromino_instance_count());

@@ -1,4 +1,4 @@
-use ash::vk;
+use ash::vk::{self, Handle};
 use vk_mem::Alloc;
 
 use super::*;
@@ -226,6 +226,6 @@ impl Buffer {
 
 impl Drop for Buffer {
     fn drop(&mut self) {
-        assert!(self.size == 0, "VMA buffer not freed before destruction");
+        assert!(self.size == 0, "VMA buffer not freed before destruction {0}", self.buffer.as_raw());
     }
 }
