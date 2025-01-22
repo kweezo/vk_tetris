@@ -1,4 +1,2 @@
--square bitmaps for fonts so smaller sizes are better supported
--rotation probably not working fine (SRS bs)
--score is bogus !!! (probably fixed now)
 -broken lose condition
+-even tetromino distribution

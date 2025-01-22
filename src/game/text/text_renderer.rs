@@ -1,7 +1,8 @@
-use crate::{*, core::Device};
+use crate::*;
 use stb_truetype_rust::*;
 use std::{fs, pin::Pin, ptr::copy_nonoverlapping};
-use descriptor::DescriptorInfo;
+use descriptor::{DescriptorInfo, DescriptorSet};
+use ash::vk;
 
 
 pub struct TextRenderer{
@@ -34,17 +35,27 @@ impl<'a> TextRenderer{
         let mut font_info = stbtt_fontinfo::default();
         unsafe { assert!(stbtt_InitFont(&mut font_info, dat.as_ptr(), 0) != 0, "Failed to parse the font") }; 
             
+        let (data, paddings, width, height) = TextRenderer::create_font_bitmap(&mut font_info, 0.1f32, starting_offset, char_count);
+
+        let tex = TextRenderer::create_font_texture(
+            device,
+            command_pool,
+            &data,
+            width,
+            height
+        );
+
+        (tex, paddings)
+    }
+
+    fn create_font_bitmap(font_info: &mut stbtt_fontinfo, scale: f32, starting_offset: u32, char_count: u32) -> (Vec<u8>, Vec<f32>, u32, u32) {
         let (mut max_width, mut max_height) = (0i32, 0i32);
-
-        let mut paddings = Vec::<f32>::with_capacity(char_count as usize);
-
-        let scale = 0.3f32;
 
         //get the max spacing for characters
         for i in 33..starting_offset + char_count{
             let (mut x0, mut y0, mut x1, mut y1) = (0i32, 032, 0i32, 0i32);
 
-            unsafe {stbtt_GetCodepointBitmapBox(&mut font_info, i as i32, scale, scale, &mut x0, &mut y0, &mut x1, &mut y1); }
+            unsafe {stbtt_GetCodepointBitmapBox(font_info, i as i32, scale, scale, &mut x0, &mut y0, &mut x1, &mut y1); }
 
             let width = x1 - x0;
             let height = y1 - y0;
@@ -55,11 +66,12 @@ impl<'a> TextRenderer{
         }
 
         let mut pixels = vec![0u8; (max_width * max_height * char_count as i32) as usize];
+        let mut paddings = Vec::<f32>::with_capacity(char_count as usize);
 
         //splice the character bitmaps together
         for (i, c) in (starting_offset..char_count + starting_offset).enumerate(){
             let (mut width, mut height, mut xoff, mut yoff) = (0, 0, 0, 0);
-            let bmp_ptr = unsafe { stbtt_GetCodepointBitmap(&mut font_info, scale, scale,
+            let bmp_ptr = unsafe { stbtt_GetCodepointBitmap(font_info, scale, scale,
                  c as i32, &mut width, &mut height, &mut xoff, &mut yoff) };
 
             assert!(bmp_ptr != std::ptr::null_mut(), "Failed to get the bitmap for char {c} (bmp_ptr is null)");
@@ -87,15 +99,19 @@ impl<'a> TextRenderer{
 
         pixels.shrink_to_fit();
 
+        (pixels, paddings, max_width as u32 * char_count, max_height as u32)
+    }
+
+    fn create_font_texture(device: &Device, command_pool: &CommandPool, data: &Vec<u8>, width: u32, height: u32) -> Texture {
         let mut command_buffer = CommandBuffer::new(device, command_pool, false);
         command_buffer.begin(device, &vk::CommandBufferInheritanceInfo::default(), vk::CommandBufferUsageFlags::empty());
 
         let tex = Texture::new_raw_data(
             device,
             &mut command_buffer,
-            pixels.as_slice(),
-            max_width as u32 * char_count,
-            max_height as u32,
+            data.as_slice(),
+            width,
+            height,
             vk::Format::R8_SRGB).expect("Failed to create the font atlas texture");
 
         command_buffer.end(device);
@@ -121,7 +137,7 @@ impl<'a> TextRenderer{
 
         command_buffer.cleanup(device);
 
-        (tex, paddings)
+        tex
     }
 
     pub fn get_data_for_str(&self, string: &str) -> Vec<u8> {
@@ -206,7 +222,7 @@ impl<'a> TextRenderer{
       pub fn get_descriptor_write_sets(
         &'a self,
         set: &'a DescriptorSet,
-    ) -> ([vk::WriteDescriptorSet<'a>; 1], Pin<Box<[DescriptorInfo; 1]>>) {
+    ) -> ([vk::WriteDescriptorSet<'a>; 1], Vec<Pin<Box<DescriptorInfo>>>) {
 
         let image_info = vk::DescriptorImageInfo {
             image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
@@ -217,11 +233,14 @@ impl<'a> TextRenderer{
 
 
 
-        let infos = Pin::new(Box::new(
-            [DescriptorInfo::Image(vec![image_info])]));
+        let infos = vec![
+            Pin::new(
+                Box::new(
+            DescriptorInfo::Image(vec![image_info])
+        ))];
 
         let image_descriptor_write = set.create_write_set(
-            &infos.as_ref()[0],
+            &infos[0],
             vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
             2, 
             1,

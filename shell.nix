@@ -22,8 +22,11 @@ pkgs.mkShell {
     pkgs.gdb
     pkgs.valgrind
     pkgs.cargo
-    pkgs.rustup
+    pkgs.rustc
     pkgs.renderdoc
+    pkgs.alsa-lib
+    pkgs.pkg-config
+    pkgs.rustup
   ];
   
 
@@ -33,6 +36,7 @@ pkgs.mkShell {
   ]; 
 
   VK_LAYER_PATH = "${pkgs.vulkan-validation-layers}/share/vulkan/explicit_layer.d"; 
+  RUST_SRC_PATH = "${pkgs.rust.packages.stable.rustPlatform.rustLibSrc}";
 
   "terminal.integrated.defaultProfile.linux" = "null";
   "terminal.integrated.shell.linux" = "/run/current-system/sw/bin/bash";

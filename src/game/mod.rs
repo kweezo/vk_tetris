@@ -6,15 +6,10 @@ mod board;
 pub use board::Board;
 pub use board::GameState;
 
-mod ui;
-pub use ui::UserInterface;
+mod user_interface;
+pub use user_interface::UserInterface;
 
-mod text_renderer;
-pub use text_renderer::TextRenderer;
+mod game;
+pub use game::Game;
 
 mod text;
-pub use text::Text;
-
-mod text_manager;
-pub use text_manager::TextManager;
-

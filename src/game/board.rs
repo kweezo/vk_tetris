@@ -81,7 +81,6 @@ pub struct Board {
 impl<'a> Board {
     pub fn new(
         device: &Device,
-        tetromino_tex_path: &str,
         command_pool: &CommandPool,
         screen_res: (u32, u32),
     ) -> Board {
@@ -92,7 +91,7 @@ impl<'a> Board {
         let buffers = Board::initialize_buffers(
             device,
             &mut transfer_command_buffer,
-            tetromino_tex_path,
+            "tetromino_piece.png",
             screen_res,
         );
 
@@ -472,7 +471,7 @@ impl<'a> Board {
         
         self.add_tetromino(2, 2);
 
-        if !self.tetromino.is_valid(&&self.grid) {
+        if !self.tetromino.is_valid(&self.grid) {
             self.game_state = GameState::END;
         }
     }
@@ -598,6 +597,8 @@ impl<'a> Board {
             self.tetromino.translate((scalar, scalar), &self.grid);
             scalar += 1;
         }
+
+        while self.tetromino.translate((0, -1), &self.grid){}
   
     }
 

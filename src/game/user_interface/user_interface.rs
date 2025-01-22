@@ -1,17 +1,20 @@
-use crate::{core::Device, types::*};
+use crate::{game::GameState, types::*, *};
 use ash::vk;
 use bytemuck::bytes_of;
-use crate::{descriptor::{DescriptorInfo, DescriptorSet}, *};
+use descriptor::{DescriptorInfo, DescriptorSet};
 use std::{pin::Pin, sync::{Arc, Mutex}};
-use super::*;
+use super::super::text::*;
+
+use super::Backdrop;
 
 pub struct UserInterface {
-    backdrop_tex: Texture,
 
     vertex_buffer: Buffer,
     index_buffer: Buffer,
 
     text_manager: TextManager,
+
+    backdrop: Backdrop,
 
     score_text: Text,
     end_text: Text,
@@ -22,10 +25,10 @@ pub struct UserInterface {
 }
 
 impl<'a> UserInterface {
-    pub fn new(device: &Device, command_pool: &CommandPool, backdrop_path: &str, score: Arc<Mutex<u32>>) -> UserInterface {
+    pub fn new(device: &Device, command_pool: &CommandPool, score: Arc<Mutex<u32>>) -> UserInterface {
         let mut text_manager = TextManager::new(device, command_pool);
 
-        let buffers = UserInterface::initialize_buffers(device, command_pool, backdrop_path);
+        let buffers = UserInterface::initialize_buffers(device, command_pool);
 
         let mut texts = text_manager.create_texts(device, &[
             ("0", 100.0f32, (50, 900)),
@@ -35,15 +38,17 @@ impl<'a> UserInterface {
         let score_text = texts.remove(0);
         let end_text = texts.remove(0);
 
+        let backdrop = Backdrop::new(device, command_pool, "background.png");
+
         UserInterface {
             vertex_buffer: buffers.0,
             index_buffer: buffers.1,
-            backdrop_tex: buffers.2,
             text_manager,
             score_text,
             end_text,
             game_state: GameState::RUNNING,
-            score
+            score,
+            backdrop
         }
     }
 
@@ -52,8 +57,7 @@ impl<'a> UserInterface {
     fn initialize_buffers(
         device: &Device,
         command_pool: &CommandPool,
-        backdrop_path: &str,
-    ) -> (Buffer, Buffer, Texture) {
+    ) -> (Buffer, Buffer) {
         let indices: [u16; 6] = [0, 1, 2, 1, 2, 3];
         let vertices: [f32; 8] = [0f32, 0f32, 0f32, 1f32, 1f32, 0f32, 1f32, 1f32];
 
@@ -65,6 +69,7 @@ impl<'a> UserInterface {
             vk::CommandBufferUsageFlags::empty(),
         );
 
+        
         let vertex_buffer = Buffer::new(
             device,
             &mut command_buffer,
@@ -80,9 +85,6 @@ impl<'a> UserInterface {
             BufferType::Index,
             false,
         );
-
-        let backdrop_texture = Texture::new(backdrop_path, device, &mut command_buffer)
-            .expect("Failed to load the backdrop texture");
 
         command_buffer.end(device);
 
@@ -113,7 +115,7 @@ impl<'a> UserInterface {
 
         command_buffer.cleanup(device);
 
-        (vertex_buffer, index_buffer, backdrop_texture)
+        (vertex_buffer, index_buffer)
     }
 
     pub fn update(&mut self, state: GameState) {
@@ -129,7 +131,7 @@ impl<'a> UserInterface {
         subpass_index: u32,
         tetromino_instance_count: u32
     ) {
-        self.draw_backdrop(device, render_pass, command_buffer, subpass_index, tetromino_instance_count);
+        self.backdrop.draw(device, render_pass, command_buffer, subpass_index, tetromino_instance_count, &self.vertex_buffer, &self.index_buffer);
         self.draw_texts(device, render_pass, command_buffer, subpass_index+1);
 
     }
@@ -155,87 +157,16 @@ impl<'a> UserInterface {
 
 
 
-    fn draw_backdrop(
-        &self,
-        device: &Device,
-        render_pass: &RenderPass,
-        command_buffer: &CommandBuffer,
-        subpass_index: u32,
-        tetromino_instance_count: u32) {
-        let offset = 0u32;
-
-        let push_constants = [1u32.to_ne_bytes(), tetromino_instance_count.to_ne_bytes()].concat();
-
-        unsafe {
-            device.get_ash_device().cmd_bind_pipeline(
-                command_buffer.get_command_buffer(),
-                vk::PipelineBindPoint::GRAPHICS,
-                render_pass.get_pipeline(subpass_index as usize),
-            );
-
-            device.get_ash_device().cmd_push_constants(
-                command_buffer.get_command_buffer(),
-                render_pass.get_layout(),
-                vk::ShaderStageFlags::ALL,
-                offset,
-                &push_constants,
-            );
-
-            device.get_ash_device().cmd_bind_vertex_buffers(
-                command_buffer.get_command_buffer(),
-                0,
-                &[self.vertex_buffer.get_buffer()],
-                &[0],
-            );
-
-            device.get_ash_device().cmd_bind_index_buffer(
-                command_buffer.get_command_buffer(),
-                self.index_buffer.get_buffer(),
-                0,
-                vk::IndexType::UINT16,
-            );
-
-            device.get_ash_device().cmd_draw_indexed(
-                command_buffer.get_command_buffer(),
-                6,
-                1,
-                0,
-                0,
-                0,
-            );
-        }
-
-    }
 
     pub fn get_descriptor_write_sets(
         &'a self,
         set: &'a DescriptorSet,
-    ) -> ([vk::WriteDescriptorSet<'a>; 1], Pin<Box<[DescriptorInfo; 1]>>) {
+    ) -> ([vk::WriteDescriptorSet<'a>; 2],  [Pin<Box<DescriptorInfo>>; 2]) {
 
-        let image_info = vk::DescriptorImageInfo {
-            image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-            image_view: self.backdrop_tex.get_image_view(),
-            sampler: self.backdrop_tex.get_sampler(),
-        };
+        let (backdrop_write, mut backdrop_info) = self.backdrop.get_descriptor_write_sets(set);
+        let (text_write, mut text_info) = self.text_manager.get_text_renderer().get_descriptor_write_sets(set);
 
-        let infos = Pin::new(Box::new([DescriptorInfo::Image(vec![image_info])]));
-
-        let descriptor_write = set.create_write_set(
-            &infos.as_ref()[0],
-            vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
-            1,
-            1,
-            1
-        );
-
-        ([descriptor_write], infos)
-    }
-
-    pub fn get_text_renderer_descriptor_sets( 
-        &'a self,
-        set: &'a DescriptorSet,
-    ) -> ([vk::WriteDescriptorSet<'a>; 1], Pin<Box<[DescriptorInfo; 1]>>) {
-        self.text_manager.get_text_renderer().get_descriptor_write_sets(set)
+        ([backdrop_write[0], text_write[0]], [backdrop_info.remove(0), text_info.remove(0)])
     }
 
     pub fn get_required_vertex_input_states() -> ([vk::PipelineVertexInputStateCreateInfo<'a>; 2], VertexInputData){
@@ -311,7 +242,7 @@ impl<'a> UserInterface {
     pub fn destroy(&mut self, device: &Device) {
         self.vertex_buffer.destroy(device);
         self.index_buffer.destroy(device);
-        self.backdrop_tex.destroy(device);
+        self.backdrop.destroy(device);
         self.score_text.destroy(device);
         self.end_text.destroy(device);
         self.text_manager.destroy(device);

@@ -23,7 +23,7 @@ layout(set = 0, binding = 8) readonly buffer u_instance{
 void main() {
     float scale_factor = 50;
 
-    vec4 base_color = texture(textures[texID], texCoords) * vec4(255, 255, 255, 255);
+    vec4 base_color = texture(textures[texID], texCoords) * vec4(63, 63, 63, 255);
 
     for (uint i = 0; i < instance_count; i++) {
         vec2 pos = (instance.dat[i].pos) - vec2(0.5, 0.5);
