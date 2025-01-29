@@ -12,8 +12,8 @@ layout(binding = 6) uniform u_projection{
 } proj; 
 
 struct InstanceDat {
-    uvec2 pos;
     uvec4 col;
+    uvec2 pos;
 };
 
 layout(set = 0, binding = 8) readonly buffer u_instance{

@@ -14,4 +14,4 @@ serde = { version = "1.0.213", features = ["derive"] }
 bytemuck = "1.7"
 rand = "0.8.5"
 stb_truetype_rust = "1.26.1"
-rodio = "0.20.1"
+kira = {version = "0.10.2", opt-level = 3}

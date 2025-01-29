@@ -53,6 +53,7 @@ impl Buffer {
         }
         .expect("Failed to allocate a new buffer with VMA");
 
+
         (buffer, allocation)
     }
 

@@ -1,7 +1,11 @@
+use button::ButtonManager;
 use descriptor::DescriptorSet;
 use ash::vk;
 
 use crate::*;
+use super::*;
+
+use audio::*;
 
 macro_rules! device {
     ($x:ident) => {
@@ -26,6 +30,10 @@ pub struct Game {
 
     image_acquisition_fence: Fence,
     render_finish_semaphore: Semaphore,
+
+    audio_manager: AudioManager,
+
+    soundtrack: Sound
 }
 
 impl Game {
@@ -60,8 +68,14 @@ impl Game {
 
         let image_acquisition_fence = Fence::new(core.get_device(), false);
         let render_finish_semaphore = Semaphore::new(core.get_device());
-        
-        Game { window, core, render_pass, command_pool, command_buffer, set, user_interface, board, image_acquisition_fence, render_finish_semaphore }
+
+        let mut audio_manager = AudioManager::new();
+
+        let mut soundtrack = Sound::new("music.wav",  -20.0, true);
+
+       // audio_manager.play(&mut soundtrack);
+
+        Game { window, core, render_pass, command_pool, command_buffer, set, user_interface, board, image_acquisition_fence, render_finish_semaphore, audio_manager, soundtrack}
     }
 
     fn load_shaders(core: &Core) -> Vec<Shader> {
@@ -83,7 +97,13 @@ impl Game {
             String::from("shaders/bin/text_frag.spv"),
         );
 
-        vec![backdrop_shader, text_shader, tetromino_shader]
+        let button_shader = vulkan::Shader::new(
+            core.get_device(),
+            String::from("shaders/bin/button_vert.spv"),
+            String::from("shaders/bin/button_frag.spv"),
+        );
+
+        vec![backdrop_shader, text_shader, button_shader, tetromino_shader]
     }
 
     fn create_descriptor_set(core: &Core) -> DescriptorSet{
@@ -102,9 +122,11 @@ impl Game {
 
         let (board_vertex_inputs, _board_vertex_input_data) = Board::get_required_vertex_input_states();
         let (ui_vertex_inputs, _ui_vertex_input_data) = UserInterface::get_required_vertex_input_states();
+        let (button_vertex_inputs, _button_vertex_input_data) = ButtonManager::get_required_vertex_input_states();
 
         let mut vertex_inputs = Vec::<vk::PipelineVertexInputStateCreateInfo>::with_capacity(board_vertex_inputs.len() + ui_vertex_inputs.len());
         vertex_inputs.extend_from_slice(&ui_vertex_inputs);
+        vertex_inputs.extend_from_slice(&button_vertex_inputs);
         vertex_inputs.extend_from_slice(&board_vertex_inputs);
 
         RenderPass::new(
@@ -147,7 +169,7 @@ impl Game {
 
         self.update_descriptor_set();
 
-        self.board.update(self.window.get_events());
+        self.board.update(self.window.get_events(), &mut self.audio_manager);
         self.user_interface.update(self.board.get_game_state());
     }
 
@@ -297,7 +319,7 @@ impl Game {
             );
         }
 
-        self.board.draw(self.core.get_device(), &self.render_pass, &self.command_buffer, 2);
+        self.board.draw(self.core.get_device(), &self.render_pass, &self.command_buffer, 3);
 
         self.end_command_buffer_and_present(image_index);
     }

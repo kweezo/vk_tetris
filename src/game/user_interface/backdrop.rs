@@ -28,24 +28,11 @@ impl<'a> Backdrop {
 
         command_buffer.end(device);
 
-
-        let submit_info = vk::SubmitInfo {  
-            s_type: vk::StructureType::SUBMIT_INFO,
-
-            command_buffer_count: 1,
-            p_command_buffers: &command_buffer.get_command_buffer(),
-
-            ..Default::default()
-        };
-
         let fence = Fence::new(device, false);
 
-        unsafe {
-            device
-                .get_ash_device()
-                .queue_submit(device.get_queue(), &[submit_info], fence.get_fence())
-                .expect("Failed to submit the queue for initialization of UI buffers");
+        CommandBuffer::submit(device, &[command_buffer.get_command_buffer()], &[], &[], fence.get_fence());
 
+        unsafe {
             device
                 .get_ash_device()
                 .wait_for_fences(&[fence.get_fence()], true, u64::MAX)

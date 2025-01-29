@@ -1,11 +1,12 @@
-use crate::{game::GameState, types::*, *};
+use crate::{types::*, *};
 use ash::vk;
 use bytemuck::bytes_of;
 use descriptor::{DescriptorInfo, DescriptorSet};
 use std::{pin::Pin, sync::{Arc, Mutex}};
-use super::super::text::*;
+use super::super::{text::*, button::*};
 
 use super::Backdrop;
+
 
 pub struct UserInterface {
 
@@ -19,6 +20,9 @@ pub struct UserInterface {
     score_text: Text,
     end_text: Text,
 
+    button_manager: ButtonManager,
+    button: Button,
+
     game_state: GameState,
 
     score: Arc<Mutex<u32>>
@@ -31,14 +35,24 @@ impl<'a> UserInterface {
         let buffers = UserInterface::initialize_buffers(device, command_pool);
 
         let mut texts = text_manager.create_texts(device, &[
-            ("0", 100.0f32, (50, 900)),
-            ("BETA MALE", 50.0f32, (150, 300)),
+            ("0", &Rect{ x: 100, y: 100, width: 1000, height: 1000 }),
+            ("LOSERO", &Rect{ x: 150, y: 300, width: 200, height: 200 }),
         ]);
 
         let score_text = texts.remove(0);
         let end_text = texts.remove(0);
 
         let backdrop = Backdrop::new(device, command_pool, "background.png");
+
+        let mut button_manager = ButtonManager::new(device, command_pool);
+
+        let mut buttons = button_manager.create_buttons(device, &[(&Rect{x: 100, y: 100, width: 200, height: 200}, (255, 255, 255), "semtexx")],
+         &text_manager.get_text_renderer());
+
+        let button = buttons.remove(0);
+
+        button_manager.add_button(&button);
+        button_manager.update(device);
 
         UserInterface {
             vertex_buffer: buffers.0,
@@ -48,7 +62,9 @@ impl<'a> UserInterface {
             end_text,
             game_state: GameState::RUNNING,
             score,
-            backdrop
+            backdrop,
+            button_manager,
+            button
         }
     }
 
@@ -88,22 +104,12 @@ impl<'a> UserInterface {
 
         command_buffer.end(device);
 
-        let submit_info = vk::SubmitInfo {
-            s_type: vk::StructureType::SUBMIT_INFO,
-            wait_semaphore_count: 0,
-            command_buffer_count: 1,
-            p_command_buffers: &command_buffer.get_command_buffer(),
-            signal_semaphore_count: 0,
-            ..Default::default()
-        };
-
         let fence = Fence::new(device, false);
+        
+        CommandBuffer::submit(device, &[command_buffer.get_command_buffer()], &[], &[], fence.get_fence());
 
         unsafe {
-            device
-                .get_ash_device()
-                .queue_submit(device.get_queue(), &[submit_info], fence.get_fence())
-                .expect("Failed to submit the queue for initialization of UI buffers");
+
 
             device
                 .get_ash_device()
@@ -133,6 +139,7 @@ impl<'a> UserInterface {
     ) {
         self.backdrop.draw(device, render_pass, command_buffer, subpass_index, tetromino_instance_count, &self.vertex_buffer, &self.index_buffer);
         self.draw_texts(device, render_pass, command_buffer, subpass_index+1);
+        self.button_manager.draw(device, command_buffer, &self.vertex_buffer, &self.index_buffer, render_pass, subpass_index+2);
 
     }
 
@@ -149,6 +156,8 @@ impl<'a> UserInterface {
              render_pass, subpass_index);
             
         self.score_text.draw(device, command_buffer, &self.text_manager.get_text_renderer(), render_pass);
+
+        self.button.draw_text(device, &self.text_manager.get_text_renderer(), command_buffer, render_pass);
 
         if matches!(self.game_state, GameState::END) {
             self.end_text.draw(device, command_buffer, &self.text_manager.get_text_renderer(), render_pass);
@@ -235,7 +244,7 @@ impl<'a> UserInterface {
 
                 ..Default::default()
             },
-        ], vec![(vertex_bindings, vertex_attributes)])
+        ], (vertex_bindings, vertex_attributes))
 
     }
 
@@ -246,5 +255,7 @@ impl<'a> UserInterface {
         self.score_text.destroy(device);
         self.end_text.destroy(device);
         self.text_manager.destroy(device);
+        self.button_manager.destroy(device);
+        self.button.destroy(device);
     }
 }

@@ -1,19 +1,18 @@
 use super::*;
-use crate::*;
+use crate::{types::Rect, *};
 
 pub struct Text {
     text_buffer: Buffer,
     text_len: usize,
-    scale: f32,
-    pos: (u32, u32)
+    rect: Rect
 }
 
 impl Text {
-    pub fn new(device: &Device, command_buffer: &mut CommandBuffer, text_renderer: &TextRenderer, text_raw: &str, scale: f32, pos: (u32, u32)) -> Text{
+    pub fn new(device: &Device, command_buffer: &mut CommandBuffer, text_renderer: &TextRenderer, text_raw: &str, rect: Rect) -> Text{
 
         let text_buffer = Text::upload_text_to_buffer(device, command_buffer, text_renderer, text_raw);
 
-        Text {pos, scale, text_len: text_raw.len(), text_buffer}
+        Text {rect, text_len: text_raw.len(), text_buffer}
     }
 
     fn upload_text_to_buffer(device: &Device, command_buffer: &mut CommandBuffer, text_renderer: &TextRenderer, text_raw: &str, ) -> Buffer {
@@ -27,7 +26,7 @@ impl Text {
 
     pub fn draw(&self, device: &Device, command_buffer: &CommandBuffer, text_renderer: &TextRenderer, render_pass: &RenderPass) {
         text_renderer.render_text(device, command_buffer, render_pass, &self.text_buffer, text_renderer::RenderInfo {
-             char_count: self.text_len as u32, scale: self.scale,  pos: self.pos });
+             char_count: self.text_len as u32, rect: self.rect });
     }
 
     pub fn set_text(&mut self, device: &Device, text_renderer: &TextRenderer, command_buffer: &mut CommandBuffer, text_raw: &str) {
@@ -49,11 +48,13 @@ impl Text {
     }
 
     pub fn set_pos(&mut self, new_pos: (u32, u32)) {
-        self.pos = new_pos;
+        self.rect.x = new_pos.0;
+        self.rect.y = new_pos.1;
     }
 
-    pub fn set_scale(&mut self, new_scale: f32) {
-        self.scale = new_scale;
+    pub fn set_size(&mut self, new_size: (u32, u32)) {
+        self.rect.width = new_size.0;
+        self.rect.width = new_size.1;
     }
 
     pub fn destroy(&mut self, device: &Device) {

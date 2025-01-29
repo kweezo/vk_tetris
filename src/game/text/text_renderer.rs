@@ -1,4 +1,4 @@
-use crate::*;
+use crate::{types::Rect, *};
 use stb_truetype_rust::*;
 use std::{fs, pin::Pin, ptr::copy_nonoverlapping};
 use descriptor::{DescriptorInfo, DescriptorSet};
@@ -14,8 +14,7 @@ pub struct TextRenderer{
 
 pub struct RenderInfo {
     pub char_count: u32,
-    pub scale: f32,
-    pub pos: (u32, u32),
+    pub rect: Rect
 }
 
 impl<'a> TextRenderer{
@@ -120,17 +119,9 @@ impl<'a> TextRenderer{
 
         let fence = Fence::new(device, false);
 
-        let submit_info = vk::SubmitInfo {
-            s_type: vk::StructureType::SUBMIT_INFO,
-            command_buffer_count: 1,
-            p_command_buffers: &command_buffer.get_command_buffer(),
-            ..Default::default()
-        };
+        CommandBuffer::submit(device, &[command_buffer.get_command_buffer()], &[], &[], fence.get_fence());
 
         unsafe{
-            device.get_ash_device().queue_submit(device.get_queue(), &[submit_info], fence.get_fence())
-            .expect("Failed to submit the font atlas command buffer");
-
             device.get_ash_device().wait_for_fences(&[fence.get_fence()], true, std::u64::MAX)
             .expect("Failed to waitd for the font atlas load fence");
         }
@@ -204,7 +195,7 @@ impl<'a> TextRenderer{
 
     pub fn render_text(&self, device: &Device, command_buffer: &CommandBuffer, render_pass: &RenderPass, data_buffer: &Buffer, info: RenderInfo) {
 
-        let push_constants = [self.char_count.to_ne_bytes(), info.scale.to_ne_bytes(), [0u8; 4], info.pos.0.to_ne_bytes(), info.pos.1.to_ne_bytes()].concat();
+        let push_constants = [self.char_count.to_ne_bytes().as_slice(), info.rect.to_ne_bytes().as_slice(), info.char_count.to_ne_bytes().as_slice()].concat();
 
         unsafe{
 

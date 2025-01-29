@@ -15,8 +15,8 @@ in vec4 gl_FragCoord;
 
 
 struct InstanceDat {
-    uvec2 pos;
     uvec4 col;
+    uvec2 pos;
 };
 
 layout(set = 0, binding = 8) readonly buffer u_instance{

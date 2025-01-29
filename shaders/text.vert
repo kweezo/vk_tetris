@@ -7,8 +7,9 @@ layout(location = 2) in float padding;
 layout(push_constant) uniform pc{
     uint pc_texID;
     uint char_count;
-    float scale_factor;
     uvec2 pos;
+    uvec2 p_size;
+    uint instance_count;
 };
 
 layout(binding = 6) uniform proj_u{
@@ -32,6 +33,11 @@ void main() {
         return;
     }
 
-    gl_Position = proj.proj * vec4(vec2(inVertex*scale_factor) + vec2(pos.x + gl_InstanceIndex * scale_factor * 1.1 - padding * scale_factor, pos.y),
+    vec2 size = vec2(p_size.x / char_count, p_size.y);
+
+    vec2 spaced_coords = vec2(inVertex * size) + vec2(pos.x + gl_InstanceIndex * 1.1 * size.x - padding * size.x, pos.y * size.y); 
+
+
+    gl_Position = proj.proj * vec4(spaced_coords,
      -0.1, 1.0); 
 }
