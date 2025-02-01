@@ -131,7 +131,7 @@ impl<'a> TextRenderer{
         tex
     }
 
-    pub fn get_data_for_str(&self, string: &str) -> Vec<u8> {
+    pub fn get_data_for_str(&self, string: &str, rect: &Rect) -> (Vec<u8>, (u32, u32)) {
         let mut dat = Vec::<u8>::with_capacity(string.len());
 
         let mut curr_padding = 0f32;
@@ -165,7 +165,9 @@ impl<'a> TextRenderer{
 
         }
 
-        dat
+        let scale = self.calculate_adjusted_scale(string, (rect.width, rect.height));
+
+        (dat, scale)
     }
 
     pub fn prepare_text_renderer(&self, device: &Device, command_buffer: &CommandBuffer, vertex_buffer: &Buffer, index_buffer: &Buffer, render_pass: &RenderPass, subpass_index: u32) {
@@ -208,6 +210,16 @@ impl<'a> TextRenderer{
             device.get_ash_device().cmd_draw_indexed(command_buffer.get_command_buffer(), 6, info.char_count,
              0, 0, 0);
         }
+    }
+
+    fn calculate_adjusted_scale(&self, string: &str, target_size: (u32, u32)) -> (u32, u32) {
+        let mut paddings_sum = 0.0f32;
+
+        for c in string.chars() {
+           paddings_sum += self.paddings[c as usize - self.starting_offset as usize] / 1.1;
+        }
+        
+        ((target_size.0 as f32 * (1.0f32 + paddings_sum)) as u32, target_size.1)
     }
 
       pub fn get_descriptor_write_sets(

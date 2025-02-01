@@ -35,7 +35,7 @@ impl<'a> UserInterface {
         let buffers = UserInterface::initialize_buffers(device, command_pool);
 
         let mut texts = text_manager.create_texts(device, &[
-            ("0", &Rect{ x: 100, y: 100, width: 1000, height: 1000 }),
+            ("0", &Rect{ x: 100, y: 850, width: 100, height: 100 }),
             ("LOSERO", &Rect{ x: 150, y: 300, width: 200, height: 200 }),
         ]);
 
@@ -46,7 +46,7 @@ impl<'a> UserInterface {
 
         let mut button_manager = ButtonManager::new(device, command_pool);
 
-        let mut buttons = button_manager.create_buttons(device, &[(&Rect{x: 100, y: 100, width: 200, height: 200}, (255, 255, 255), "semtexx")],
+        let mut buttons = button_manager.create_buttons(device, &[(&Rect{x: 100, y: 100, width: 300, height: 100}, (255, 255, 255), "semtexx")],
          &text_manager.get_text_renderer());
 
         let button = buttons.remove(0);

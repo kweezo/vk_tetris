@@ -6,7 +6,7 @@ pub type Grid = [[[u8; 4]; PLAYFIELD_WIDTH as usize]; PLAYFIELD_HEIGHT as usize]
 pub type VertexInputData = (Vec<vk::VertexInputBindingDescription>, Vec<vk::VertexInputAttributeDescription>);
 pub type Color = (u8, u8, u8); // todo replace all instances
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct Rect{
     pub x: u32,
     pub y: u32,
@@ -14,7 +14,6 @@ pub struct Rect{
     pub width: u32,
     pub height: u32,
 }
-
 
 impl Rect {
     pub fn to_ne_bytes(&self) -> Vec<u8> {

@@ -33,9 +33,9 @@ void main() {
         return;
     }
 
-    vec2 size = vec2(p_size.x / char_count, p_size.y);
+    vec2 size = vec2(p_size.x / float(instance_count), p_size.y);
 
-    vec2 spaced_coords = vec2(inVertex * size) + vec2(pos.x + gl_InstanceIndex * 1.1 * size.x - padding * size.x, pos.y * size.y); 
+    vec2 spaced_coords = vec2(inVertex * size) + vec2(pos.x + gl_InstanceIndex * 1.1 * size.x - padding * size.x, pos.y); 
 
 
     gl_Position = proj.proj * vec4(spaced_coords,

@@ -4,24 +4,25 @@ use crate::{types::Rect, *};
 pub struct Text {
     text_buffer: Buffer,
     text_len: usize,
-    rect: Rect
+    rect: Rect,
 }
 
 impl Text {
     pub fn new(device: &Device, command_buffer: &mut CommandBuffer, text_renderer: &TextRenderer, text_raw: &str, rect: Rect) -> Text{
 
-        let text_buffer = Text::upload_text_to_buffer(device, command_buffer, text_renderer, text_raw);
+        let (text_buffer, size) = Text::upload_text_to_buffer(device, command_buffer, text_renderer, text_raw, &rect);
+        dbg!(rect, size);
 
-        Text {rect, text_len: text_raw.len(), text_buffer}
+        Text {rect: Rect { x: rect.x, y: rect.y, width: size.0, height: size.1 }, text_len: text_raw.len(), text_buffer}
     }
 
-    fn upload_text_to_buffer(device: &Device, command_buffer: &mut CommandBuffer, text_renderer: &TextRenderer, text_raw: &str, ) -> Buffer {
+    fn upload_text_to_buffer(device: &Device, command_buffer: &mut CommandBuffer, text_renderer: &TextRenderer, text_raw: &str, rect: &Rect) -> (Buffer, (u32, u32)){
 
-        let data = text_renderer.get_data_for_str(text_raw);
+        let (data, size) = text_renderer.get_data_for_str(text_raw, rect);
 
         let buffer = Buffer::new(device, command_buffer, &data, BufferType::Vertex, false);
 
-        buffer
+        (buffer, size)
     }
 
     pub fn draw(&self, device: &Device, command_buffer: &CommandBuffer, text_renderer: &TextRenderer, render_pass: &RenderPass) {
@@ -35,14 +36,14 @@ impl Text {
             self.text_len = text_raw.len();
 
             self.text_buffer.destroy(device);
-            self.text_buffer = Text::upload_text_to_buffer(device, command_buffer, text_renderer, text_raw);
+            (self.text_buffer, (self.rect.width, self.rect.height)) = Text::upload_text_to_buffer(device, command_buffer, text_renderer, text_raw, &self.rect);
 
             return
         }
         
         self.text_len = text_raw.len();
 
-        let data = text_renderer.get_data_for_str(text_raw);
+        let (data, _) = text_renderer.get_data_for_str(text_raw, &self.rect);
 
         self.text_buffer.update(device, command_buffer, &data);
     }
