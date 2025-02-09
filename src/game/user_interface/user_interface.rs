@@ -1,4 +1,4 @@
-use crate::{types::*, *};
+use crate::{game::board::Board, types::*, *};
 use ash::vk;
 use bytemuck::bytes_of;
 use descriptor::{DescriptorInfo, DescriptorSet};
@@ -21,7 +21,9 @@ pub struct UserInterface {
     end_text: Text,
 
     button_manager: ButtonManager,
-    button: Button,
+    reset_button: Button,
+
+    last_pressed: bool,
 
     game_state: GameState,
 
@@ -29,8 +31,8 @@ pub struct UserInterface {
 }
 
 impl<'a> UserInterface {
-    pub fn new(device: &Device, command_pool: &CommandPool, score: Arc<Mutex<u32>>) -> UserInterface {
-        let mut text_manager = TextManager::new(device, command_pool);
+    pub fn new(core: &Core, device: &Device, command_pool: &CommandPool, score: Arc<Mutex<u32>>) -> UserInterface {
+        let mut text_manager = TextManager::new(core, device, command_pool);
 
         let buffers = UserInterface::initialize_buffers(device, command_pool);
 
@@ -46,12 +48,12 @@ impl<'a> UserInterface {
 
         let mut button_manager = ButtonManager::new(device, command_pool);
 
-        let mut buttons = button_manager.create_buttons(device, &[(&Rect{x: 100, y: 100, width: 300, height: 100}, (255, 255, 255), "semtexx")],
+        let mut buttons = button_manager.create_buttons(device, &[(&Rect{x: 100, y: 100, width: 300, height: 100}, (255, 255, 255), "RESET")],
          &text_manager.get_text_renderer());
 
-        let button = buttons.remove(0);
+        let reset_button = buttons.remove(0);
 
-        button_manager.add_button(&button);
+        button_manager.add_button(&reset_button);
         button_manager.update(device);
 
         UserInterface {
@@ -64,7 +66,8 @@ impl<'a> UserInterface {
             score,
             backdrop,
             button_manager,
-            button
+            reset_button,
+            last_pressed: false
         }
     }
 
@@ -124,7 +127,30 @@ impl<'a> UserInterface {
         (vertex_buffer, index_buffer)
     }
 
-    pub fn update(&mut self, state: GameState) {
+    fn handle_buttons(&mut self, window: &Window, board: &mut Board) {
+        let mouse_state = window.get_window_handle().get_mouse_button(glfw::MouseButton::Button1);
+        let is_pressed = mouse_state == glfw::Action::Press;
+
+        if is_pressed == self.last_pressed || mouse_state == glfw::Action::Release{
+            self.last_pressed = is_pressed;
+            return;
+        }
+
+        let (x, y) = window.get_window_handle().get_cursor_pos();
+        let mouse_pos = (x as u32, y as u32);
+
+
+        if self.reset_button.is_pressed(mouse_pos) {
+            board.reset_game();
+        }
+
+
+        self.last_pressed = is_pressed;
+    }
+
+    pub fn update(&mut self, state: GameState, window: &Window, board: &mut Board) {
+        self.handle_buttons(window, board);
+
         self.game_state = state;
     }
 
@@ -157,7 +183,7 @@ impl<'a> UserInterface {
             
         self.score_text.draw(device, command_buffer, &self.text_manager.get_text_renderer(), render_pass);
 
-        self.button.draw_text(device, &self.text_manager.get_text_renderer(), command_buffer, render_pass);
+        self.reset_button.draw_text(device, &self.text_manager.get_text_renderer(), command_buffer, render_pass);
 
         if matches!(self.game_state, GameState::END) {
             self.end_text.draw(device, command_buffer, &self.text_manager.get_text_renderer(), render_pass);
@@ -256,6 +282,6 @@ impl<'a> UserInterface {
         self.end_text.destroy(device);
         self.text_manager.destroy(device);
         self.button_manager.destroy(device);
-        self.button.destroy(device);
+        self.reset_button.destroy(device);
     }
 }

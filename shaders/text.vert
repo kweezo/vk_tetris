@@ -10,6 +10,8 @@ layout(push_constant) uniform pc{
     uvec2 pos;
     uvec2 p_size;
     uint instance_count;
+    uint chars_per_row;
+    uint row_count;
 };
 
 layout(binding = 6) uniform proj_u{
@@ -22,9 +24,11 @@ layout(location = 1) out flat uint texID;
 
 void main() {
 
-    float texcoord_scale_factor = 1.0f/char_count;
+    float texcoord_scale_factor = 1.0f/chars_per_row;
 
-    texCoords = vec2(inVertex.x * texcoord_scale_factor + offset*texcoord_scale_factor, inVertex.y);
+    texCoords = vec2(
+        inVertex.x * texcoord_scale_factor + (offset % chars_per_row) * texcoord_scale_factor,
+        floor(offset / chars_per_row) / row_count + inVertex.y/row_count); 
 
     texID = pc_texID;
 
@@ -35,7 +39,7 @@ void main() {
 
     vec2 size = vec2(p_size.x / float(instance_count), p_size.y);
 
-    vec2 spaced_coords = vec2(inVertex * size) + vec2(pos.x + gl_InstanceIndex * 1.1 * size.x - padding * size.x, pos.y); 
+    vec2 spaced_coords = vec2(inVertex * size) + vec2(pos.x + gl_InstanceIndex * size.x - padding * size.x, pos.y); 
 
 
     gl_Position = proj.proj * vec4(spaced_coords,

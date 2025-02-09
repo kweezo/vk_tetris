@@ -62,7 +62,7 @@ impl Game {
             ),
         );
 
-        let user_interface = UserInterface::new(core.get_device(), &command_pool, board.get_score());
+        let user_interface = UserInterface::new(&core, core.get_device(), &command_pool, board.get_score());
 
         Game::initialize_descriptor_set(&core, &set, &board, &user_interface);
 
@@ -170,7 +170,7 @@ impl Game {
         self.update_descriptor_set();
 
         self.board.update(self.window.get_events(), &mut self.audio_manager);
-        self.user_interface.update(self.board.get_game_state());
+        self.user_interface.update(self.board.get_game_state(), &self.window, &mut self.board);
     }
 
     fn get_image_index(&self) -> u32 {

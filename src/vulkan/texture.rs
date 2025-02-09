@@ -11,7 +11,7 @@ pub struct Texture {
 }
 
 impl Texture {
-    pub fn new(path: &str, device: &Device, command_buffer: &mut CommandBuffer) -> Option<Texture> {
+    pub fn new(path: &str, device: &Device, command_buffer: &mut CommandBuffer, multisampling: bool) -> Option<Texture> {
 
         let decoder = png::Decoder::new(File::open(path).expect("Failed to open texture path"));
 
@@ -30,6 +30,10 @@ impl Texture {
             info.height,
             image::Type::SAMPLED,
             vk::Format::R8G8B8A8_SRGB,
+            match multisampling {
+                true => vk::SampleCountFlags::TYPE_4,
+                false => vk::SampleCountFlags::TYPE_1,
+            },
             data,
         );
 
@@ -51,6 +55,7 @@ impl Texture {
         width: u32,
         height: u32,
         format: vk::Format,
+        multisampling: bool
     ) -> Option<Texture> {
         let image = Image::new(
             device,
@@ -59,6 +64,10 @@ impl Texture {
             height,
             image::Type::SAMPLED,
             format,
+            match multisampling {
+                true => vk::SampleCountFlags::TYPE_4,
+                false => vk::SampleCountFlags::TYPE_1,
+            },
             data,
         );
 

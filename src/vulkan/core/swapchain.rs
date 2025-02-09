@@ -26,8 +26,8 @@ impl Swapchain {
     fn choose_surface_format(formats: Vec<vk::SurfaceFormatKHR>) -> vk::SurfaceFormatKHR {
         for format in formats.iter() {
             if format.format == vk::Format::B8G8R8A8_SRGB
-                && format.color_space == vk::ColorSpaceKHR::SRGB_NONLINEAR
-            {
+                && format.color_space == vk::ColorSpaceKHR::SRGB_NONLINEAR {
+
                 return *format;
             }
         }
@@ -211,5 +211,11 @@ impl Swapchain {
 
     pub fn get_image_views(&self) -> &Vec<vk::ImageView> {
         &self.image_views
+    }
+
+    pub fn get_physical_device_surface_capabilities(&self, physical_device: vk::PhysicalDevice) -> vk::SurfaceCapabilitiesKHR{
+        unsafe{
+            self.surface_instance.get_physical_device_surface_capabilities(physical_device, self.surface_khr)
+        }.expect("Failed to get the physical device surface capabilities")
     }
 }

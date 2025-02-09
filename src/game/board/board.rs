@@ -193,7 +193,7 @@ impl<'a> Board {
             false,
         );
 
-        let tetromino_tex = Texture::new(tetromino_tex_path, device, command_buffer)
+        let tetromino_tex = Texture::new(tetromino_tex_path, device, command_buffer, false)
             .expect("Failed to load the base tetromino texture");
 
         let projection = Board::get_projection_matrix(screen_res);
@@ -457,7 +457,7 @@ impl<'a> Board {
         //self.tetromino.translate((0, 1), &self.grid);
     }
 
-    fn reset_game(&mut self) {
+    pub fn reset_game(&mut self) {
         self.grid = [[[0; 4]; PLAYFIELD_WIDTH]; PLAYFIELD_HEIGHT];
         self.game_state = GameState::RUNNING;
         

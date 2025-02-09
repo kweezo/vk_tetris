@@ -9,6 +9,11 @@ struct DepthImage {
     image_view: vk::ImageView,
 }
 
+struct ColorImage {
+    image: Image,
+    image_view: vk::ImageView,
+}
+
 impl DepthImage {
     pub fn new(device: &Device, width: u32, height: u32) -> DepthImage {
         let image = Image::new_empty(
@@ -17,6 +22,7 @@ impl DepthImage {
             height,
             image::Type::DEPTH,
             vk::Format::D32_SFLOAT,
+            vk::SampleCountFlags::TYPE_4
         );
 
         let view_info = vk::ImageViewCreateInfo {
@@ -46,6 +52,44 @@ impl DepthImage {
     }
 }
 
+impl ColorImage {
+    pub fn new(device: &Device, width: u32, height: u32) -> ColorImage {
+        let image = Image::new_empty(
+            device,
+            width,
+            height,
+            image::Type::COLOR,
+            vk::Format::B8G8R8A8_SRGB,
+            vk::SampleCountFlags::TYPE_4
+        );
+
+        let view_info = vk::ImageViewCreateInfo {
+            s_type: vk::StructureType::IMAGE_VIEW_CREATE_INFO,
+            image: image.get_image(),
+            view_type: vk::ImageViewType::TYPE_2D,
+            format: vk::Format::B8G8R8A8_SRGB,
+            components: vk::ComponentMapping::default(),
+            subresource_range: vk::ImageSubresourceRange {
+                aspect_mask: vk::ImageAspectFlags::COLOR,
+                base_array_layer: 0,
+                base_mip_level: 0,
+                layer_count: 1,
+                level_count: 1,
+            },
+            ..Default::default()
+        };
+
+        let image_view = unsafe {
+            device
+                .get_ash_device()
+                .create_image_view(&view_info, None)
+                .expect("Failed to create the depth image view")
+        };
+
+        ColorImage { image, image_view }
+    }
+}
+
 pub struct RenderPass {
     pipelines: Vec<vk::Pipeline>,
     pipeline_layout: vk::PipelineLayout,
@@ -53,6 +97,7 @@ pub struct RenderPass {
     framebuffers: Vec<vk::Framebuffer>,
 
     depth_image: DepthImage,
+    color_image: ColorImage
 }
 
 impl RenderPass {
@@ -94,6 +139,12 @@ impl RenderPass {
             swapchain.get_swapchain_info().extent.height,
         );
 
+        let color_image = ColorImage::new(
+            device,
+            swapchain.get_swapchain_info().extent.width,
+            swapchain.get_swapchain_info().extent.height,
+        );
+
         let framebuffers = RenderPass::create_framebuffers(
             device,
             swapchain.get_swapchain_info().image_count,
@@ -101,6 +152,7 @@ impl RenderPass {
             render_pass,
             swapchain.get_image_views(),
             depth_image.image_view,
+            color_image.image_view
         );
 
         RenderPass {
@@ -109,6 +161,7 @@ impl RenderPass {
             render_pass,
             framebuffers,
             depth_image,
+            color_image
         }
     }
 
@@ -200,7 +253,7 @@ impl RenderPass {
 
         let multisample_state = vk::PipelineMultisampleStateCreateInfo {
             s_type: vk::StructureType::PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
-            rasterization_samples: vk::SampleCountFlags::TYPE_1,
+            rasterization_samples: vk::SampleCountFlags::TYPE_4,
             ..Default::default()
         };
 
@@ -289,7 +342,7 @@ impl RenderPass {
             stencil_store_op: vk::AttachmentStoreOp::DONT_CARE,
             initial_layout: vk::ImageLayout::UNDEFINED,
             final_layout: vk::ImageLayout::PRESENT_SRC_KHR,
-            samples: vk::SampleCountFlags::TYPE_1,
+            samples: vk::SampleCountFlags::TYPE_4,
             ..Default::default()
         };
 
@@ -300,7 +353,7 @@ impl RenderPass {
 
         let depth_attachment = vk::AttachmentDescription {
             format: vk::Format::D32_SFLOAT,
-            samples: vk::SampleCountFlags::TYPE_1,
+            samples: vk::SampleCountFlags::TYPE_4,
             load_op: vk::AttachmentLoadOp::CLEAR,
             store_op: vk::AttachmentStoreOp::DONT_CARE,
             stencil_load_op: vk::AttachmentLoadOp::DONT_CARE,
@@ -316,6 +369,25 @@ impl RenderPass {
             layout: vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
         };
 
+        let color_resolve_attachment = vk::AttachmentDescription {
+            format,
+            samples: vk::SampleCountFlags::TYPE_1,
+            load_op: vk::AttachmentLoadOp::DONT_CARE,
+            store_op: vk::AttachmentStoreOp::STORE,
+            stencil_load_op: vk::AttachmentLoadOp::DONT_CARE,
+            stencil_store_op: vk::AttachmentStoreOp::DONT_CARE,
+            initial_layout: vk::ImageLayout::UNDEFINED,
+            final_layout: vk::ImageLayout::PRESENT_SRC_KHR,
+
+            ..Default::default()
+        };
+
+        let color_resolve_attachment_ref = vk::AttachmentReference {
+            attachment: 2,
+            layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL
+        };
+
+
         let mut subpass_descriptions =
             Vec::<vk::SubpassDescription>::with_capacity(color_subpass_count as usize);
 
@@ -325,6 +397,7 @@ impl RenderPass {
                 color_attachment_count: 1,
                 p_color_attachments: &color_attachment_ref,
                 p_depth_stencil_attachment: &depth_attachment_ref,
+                p_resolve_attachments: &color_resolve_attachment_ref,
                 ..Default::default()
             });
         }
@@ -364,8 +437,8 @@ impl RenderPass {
 
         let render_pass_info = vk::RenderPassCreateInfo {
             s_type: vk::StructureType::RENDER_PASS_CREATE_INFO,
-            attachment_count: 2,
-            p_attachments: [color_attachment, depth_attachment].as_ptr(), //invalidated?
+            attachment_count: 3,
+            p_attachments: [color_attachment, depth_attachment, color_resolve_attachment].as_ptr(), //invalidated?
             subpass_count: subpass_descriptions.len() as u32,
             p_subpasses: subpass_descriptions.as_ptr(),
             dependency_count: subpass_dependencies.len() as u32,
@@ -388,8 +461,9 @@ impl RenderPass {
         image_count: u32,
         extent: vk::Extent2D,
         render_pass: vk::RenderPass,
-        color_image_views: &[vk::ImageView],
+        swapchain_image_views: &[vk::ImageView],
         depth_image_view: vk::ImageView,
+        color_image_view: vk::ImageView
     ) -> Vec<vk::Framebuffer> {
         let mut framebuffers = vec![vk::Framebuffer::null(); 3];
 
@@ -397,8 +471,8 @@ impl RenderPass {
             let create_info = vk::FramebufferCreateInfo {
                 s_type: vk::StructureType::FRAMEBUFFER_CREATE_INFO,
                 render_pass,
-                attachment_count: 2,
-                p_attachments: [color_image_views[i as usize], depth_image_view].as_ptr(),
+                attachment_count: 3,
+                p_attachments: [color_image_view, depth_image_view, swapchain_image_views[i as usize],].as_ptr(),
                 width: extent.width,
                 height: extent.height,
                 layers: 1,
@@ -434,5 +508,6 @@ impl RenderPass {
 
     pub fn destroy(&mut self, device: &Device) {
         self.depth_image.image.destroy(device);
+        self.color_image.image.destroy(device);
     }
 }

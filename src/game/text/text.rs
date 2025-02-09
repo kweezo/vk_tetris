@@ -10,19 +10,18 @@ pub struct Text {
 impl Text {
     pub fn new(device: &Device, command_buffer: &mut CommandBuffer, text_renderer: &TextRenderer, text_raw: &str, rect: Rect) -> Text{
 
-        let (text_buffer, size) = Text::upload_text_to_buffer(device, command_buffer, text_renderer, text_raw, &rect);
-        dbg!(rect, size);
+        let (text_buffer, size, y_offset) = Text::upload_text_to_buffer(device, command_buffer, text_renderer, text_raw, &rect);
 
-        Text {rect: Rect { x: rect.x, y: rect.y, width: size.0, height: size.1 }, text_len: text_raw.len(), text_buffer}
+        Text {rect: Rect { x: rect.x, y: rect.y - y_offset, width: size.0, height: size.1 }, text_len: text_raw.len(), text_buffer}
     }
 
-    fn upload_text_to_buffer(device: &Device, command_buffer: &mut CommandBuffer, text_renderer: &TextRenderer, text_raw: &str, rect: &Rect) -> (Buffer, (u32, u32)){
+    fn upload_text_to_buffer(device: &Device, command_buffer: &mut CommandBuffer, text_renderer: &TextRenderer, text_raw: &str, rect: &Rect) -> (Buffer, (u32, u32), u32){
 
-        let (data, size) = text_renderer.get_data_for_str(text_raw, rect);
+        let (data, size, y_offset) = text_renderer.get_data_for_str(text_raw, rect);
 
         let buffer = Buffer::new(device, command_buffer, &data, BufferType::Vertex, false);
 
-        (buffer, size)
+        (buffer, size, y_offset)
     }
 
     pub fn draw(&self, device: &Device, command_buffer: &CommandBuffer, text_renderer: &TextRenderer, render_pass: &RenderPass) {
@@ -36,14 +35,14 @@ impl Text {
             self.text_len = text_raw.len();
 
             self.text_buffer.destroy(device);
-            (self.text_buffer, (self.rect.width, self.rect.height)) = Text::upload_text_to_buffer(device, command_buffer, text_renderer, text_raw, &self.rect);
+            (self.text_buffer, (self.rect.width, self.rect.height), _) = Text::upload_text_to_buffer(device, command_buffer, text_renderer, text_raw, &self.rect);
 
             return
         }
         
         self.text_len = text_raw.len();
 
-        let (data, _) = text_renderer.get_data_for_str(text_raw, &self.rect);
+        let (data, _, _) = text_renderer.get_data_for_str(text_raw, &self.rect);
 
         self.text_buffer.update(device, command_buffer, &data);
     }

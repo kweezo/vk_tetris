@@ -26,6 +26,10 @@ impl Core {
         }
     }
 
+    pub fn get_instance(&self) -> &Instance{
+        &self.instance
+    }
+
     pub fn get_device(&self) -> &Device {
         &self.device
     }

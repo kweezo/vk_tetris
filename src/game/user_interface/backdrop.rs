@@ -23,7 +23,7 @@ impl<'a> Backdrop {
 
         command_buffer.begin(device, &vk::CommandBufferInheritanceInfo::default(), vk::CommandBufferUsageFlags::empty());
 
-        let tex = Texture::new(path, device, &mut command_buffer)
+        let tex = Texture::new(path, device, &mut command_buffer, false)
             .expect("Failed to load the backdrop texture");
 
         command_buffer.end(device);

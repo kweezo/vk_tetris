@@ -10,10 +10,10 @@ pub struct TextManager {
 }
 
 impl TextManager {
-    pub fn new(device: &Device, command_pool: &CommandPool) -> TextManager{
+    pub fn new(core: &Core, device: &Device, command_pool: &CommandPool) -> TextManager{
         let creation_command_buffer = CommandBuffer::new(device, command_pool, false);
         let update_command_buffer = CommandBuffer::new(device, command_pool, false);
-        let text_renderer = TextRenderer::new(device, command_pool);
+        let text_renderer = TextRenderer::new(core, device, command_pool);
 
         TextManager { text_renderer, update_command_buffer, creation_command_buffer }
     }

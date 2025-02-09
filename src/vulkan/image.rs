@@ -15,6 +15,7 @@ pub struct TransitionInfo {
 pub enum Type {
     SAMPLED,
     DEPTH,
+    COLOR
 }
 
 pub struct Image {
@@ -30,8 +31,9 @@ impl Image {
         height: u32,
         image_type: Type,
         format: vk::Format,
+        samples: vk::SampleCountFlags
     ) -> Image {
-        let (image, allocation) = Image::create_image(device, width, height, image_type, format);
+        let (image, allocation) = Image::create_image(device, width, height, image_type, format, samples);
 
         Image { image, allocation, destroyed: false }
     }
@@ -43,9 +45,10 @@ impl Image {
         height: u32,
         image_type: Type,
         format: vk::Format,
+        samples: vk::SampleCountFlags,
         data: &[u8],
     ) -> Image {
-        let image = Image::new_empty(device, width, height, image_type, format);
+        let image = Image::new_empty(device, width, height, image_type, format, samples);
 
         Image::copy_data_to_image(
             device,
@@ -65,6 +68,7 @@ impl Image {
         height: u32,
         image_type: Type,
         format: vk::Format,
+        samples: vk::SampleCountFlags,
     ) -> (vk::Image, vk_mem::Allocation) {
         let image_info = vk::ImageCreateInfo {
             s_type: vk::StructureType::IMAGE_CREATE_INFO,
@@ -82,12 +86,13 @@ impl Image {
                 | match image_type {
                     Type::SAMPLED => vk::ImageUsageFlags::SAMPLED,
                     Type::DEPTH => vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
+                    Type::COLOR => vk::ImageUsageFlags::COLOR_ATTACHMENT
                 },
 
             mip_levels: 1,
             array_layers: 1,
 
-            samples: vk::SampleCountFlags::TYPE_1,
+            samples: samples,
 
             tiling: vk::ImageTiling::OPTIMAL,
 

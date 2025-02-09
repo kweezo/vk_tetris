@@ -8,8 +8,11 @@ use ash::vk;
 pub struct TextRenderer{
     font_atlas_tex: Texture,
     paddings: Vec<f32>,
+    heights: Vec<f32>,
     char_count: u32,
     starting_offset: u32,
+    chars_per_row: u32,
+    row_count: u32
 }
 
 pub struct RenderInfo {
@@ -18,23 +21,24 @@ pub struct RenderInfo {
 }
 
 impl<'a> TextRenderer{
-    pub fn new(device: &Device, command_pool: &CommandPool) -> TextRenderer{
+    pub fn new(core: &Core, device: &Device, command_pool: &CommandPool) -> TextRenderer{
 
         let char_count = 93;
         let starting_offset = 33;
 
-        let (font_atlas_tex, paddings)= TextRenderer::load_font_atlas(device, command_pool, char_count, starting_offset);
+        let (font_atlas_tex, paddings, heights, chars_per_row, row_count)= TextRenderer::load_font_atlas(core, device, command_pool, char_count, starting_offset);
 
-        TextRenderer { font_atlas_tex, char_count: char_count, starting_offset, paddings}
+        TextRenderer { font_atlas_tex, char_count, starting_offset, paddings, heights, chars_per_row, row_count}
     }
 
-    fn load_font_atlas(device: &Device, command_pool: &CommandPool, char_count: u32, starting_offset: u32) -> (Texture, Vec<f32>){
+    fn load_font_atlas(core: &Core, device: &Device, command_pool: &CommandPool, char_count: u32, starting_offset: u32) -> (Texture, Vec<f32>, Vec<f32>, u32, u32){
         let dat: Vec<u8> = fs::read("font.otf").expect("Failed to read font.ttf");
 
         let mut font_info = stbtt_fontinfo::default();
         unsafe { assert!(stbtt_InitFont(&mut font_info, dat.as_ptr(), 0) != 0, "Failed to parse the font") }; 
             
-        let (data, paddings, width, height) = TextRenderer::create_font_bitmap(&mut font_info, 0.1f32, starting_offset, char_count);
+        let (data, paddings, heights, width, height, chars_per_row, row_count) = TextRenderer::create_font_bitmap(core, &mut font_info, 1f32,
+             starting_offset, char_count);
 
         let tex = TextRenderer::create_font_texture(
             device,
@@ -44,11 +48,22 @@ impl<'a> TextRenderer{
             height
         );
 
-        (tex, paddings)
+        (tex, paddings, heights, chars_per_row, row_count)
     }
 
-    fn create_font_bitmap(font_info: &mut stbtt_fontinfo, scale: f32, starting_offset: u32, char_count: u32) -> (Vec<u8>, Vec<f32>, u32, u32) {
+    fn create_font_bitmap(core: &Core, font_info: &mut stbtt_fontinfo, scale: f32, starting_offset: u32, char_count: u32) -> (Vec<u8>, Vec<f32>, Vec<f32>, u32, u32, u32, u32) {
         let (mut max_width, mut max_height) = (0i32, 0i32);
+        //set max image width to something divisibe by max_width so padding isnt a bitchg
+
+        let format_properties =
+         unsafe {
+            core.get_instance().get_ash_instance().get_physical_device_image_format_properties(core.get_device().get_vk_physical_device(),
+         vk::Format::R8_SRGB,
+            vk::ImageType::TYPE_2D,
+         vk::ImageTiling::OPTIMAL,
+          vk::ImageUsageFlags::SAMPLED,
+          vk::ImageCreateFlags::empty())
+         }.expect("Failed to get physical device image format properties");
 
         //get the max spacing for characters
         for i in 33..starting_offset + char_count{
@@ -64,8 +79,20 @@ impl<'a> TextRenderer{
 
         }
 
-        let mut pixels = vec![0u8; (max_width * max_height * char_count as i32) as usize];
+        let chars_per_row = (format_properties.max_extent.width as f32 / max_width as f32).floor() as u32;
+        let image_width = chars_per_row * max_width as u32;
+
+        let row_count = ((char_count * max_width as u32) as f32 / image_width as f32).ceil() as u32;
+        let mut current_row = 0u32;
+
+        let mut curr_chars_per_row = 0u32;
+
+
+//        let mut pixels = vec![0u8; (max_width * max_height * char_count as i32 * (char_count as f32 / max_chars_per_row as f32).ceil() as i32 + ((1.0 - ((char_count * max_width as u32) as f32 / max_image_width as f32).fract()) * max_image_width as f32) as i32 * max_height) as usize];
+        let mut pixels = vec![0u8; (image_width as i32 * (row_count + 1) as i32 * max_height as i32) as usize];
+    
         let mut paddings = Vec::<f32>::with_capacity(char_count as usize);
+        let mut heights = Vec::<f32>::with_capacity(char_count as usize);
 
         //splice the character bitmaps together
         for (i, c) in (starting_offset..char_count + starting_offset).enumerate(){
@@ -85,20 +112,30 @@ impl<'a> TextRenderer{
             let offset = i * max_width as usize; 
             let padding = ((max_width-width) as f32 / 2f32).floor() as usize;
 
+            heights.push(height as f32 / max_height as f32);
+
             for (i, y) in (max_height-height..max_height-1).enumerate() {
 
-                let starting_offset = offset + (max_width * y * char_count as i32) as usize + padding;
+                let starting_offset = offset + (y * image_width as i32) as usize + padding +
+                 image_width as usize * current_row as usize * max_height as usize;
 
                 pixels.splice(starting_offset..starting_offset + width as usize,
                      bmp[(i as i32 * width) as usize..(i as i32 * width + width) as usize].iter().cloned());
             }
 
             paddings.push(padding as f32 / max_width as f32);
+
+            curr_chars_per_row += 1;
+
+            if curr_chars_per_row >= chars_per_row {
+                curr_chars_per_row = 0;
+                current_row += 1;
+            }
         }
 
         pixels.shrink_to_fit();
 
-        (pixels, paddings, max_width as u32 * char_count, max_height as u32)
+        (pixels, paddings, heights, image_width, row_count * max_height as u32, chars_per_row, row_count)
     }
 
     fn create_font_texture(device: &Device, command_pool: &CommandPool, data: &Vec<u8>, width: u32, height: u32) -> Texture {
@@ -111,7 +148,8 @@ impl<'a> TextRenderer{
             data.as_slice(),
             width,
             height,
-            vk::Format::R8_SRGB).expect("Failed to create the font atlas texture");
+            vk::Format::R8_SRGB,
+            false).expect("Failed to create the font atlas texture");
 
         command_buffer.end(device);
 
@@ -131,7 +169,7 @@ impl<'a> TextRenderer{
         tex
     }
 
-    pub fn get_data_for_str(&self, string: &str, rect: &Rect) -> (Vec<u8>, (u32, u32)) {
+    pub fn get_data_for_str(&self, string: &str, rect: &Rect) -> (Vec<u8>, (u32, u32), u32) {
         let mut dat = Vec::<u8>::with_capacity(string.len());
 
         let mut curr_padding = 0f32;
@@ -165,9 +203,9 @@ impl<'a> TextRenderer{
 
         }
 
-        let scale = self.calculate_adjusted_scale(string, (rect.width, rect.height));
+        let (scale, y_offset) = self.calculate_adjusted_scale(string, (rect.width, rect.height));
 
-        (dat, scale)
+        (dat, scale, y_offset)
     }
 
     pub fn prepare_text_renderer(&self, device: &Device, command_buffer: &CommandBuffer, vertex_buffer: &Buffer, index_buffer: &Buffer, render_pass: &RenderPass, subpass_index: u32) {
@@ -197,7 +235,8 @@ impl<'a> TextRenderer{
 
     pub fn render_text(&self, device: &Device, command_buffer: &CommandBuffer, render_pass: &RenderPass, data_buffer: &Buffer, info: RenderInfo) {
 
-        let push_constants = [self.char_count.to_ne_bytes().as_slice(), info.rect.to_ne_bytes().as_slice(), info.char_count.to_ne_bytes().as_slice()].concat();
+        let push_constants = [self.char_count.to_ne_bytes().as_slice(), info.rect.to_ne_bytes().as_slice(),
+         info.char_count.to_ne_bytes().as_slice(), self.chars_per_row.to_ne_bytes().as_slice(), self.row_count.to_ne_bytes().as_slice()].concat();
 
         unsafe{
 
@@ -212,14 +251,23 @@ impl<'a> TextRenderer{
         }
     }
 
-    fn calculate_adjusted_scale(&self, string: &str, target_size: (u32, u32)) -> (u32, u32) {
+    fn calculate_adjusted_scale(&self, string: &str, target_size: (u32, u32)) -> ((u32, u32), u32) {
+        let mut max_height = 0f32;
+
         let mut paddings_sum = 0.0f32;
+        let instance_count = string.chars().count() as f32;
 
         for c in string.chars() {
-           paddings_sum += self.paddings[c as usize - self.starting_offset as usize] / 1.1;
+            paddings_sum += self.paddings[c as usize - self.starting_offset as usize];
+            max_height = max_height.max(self.heights[c as usize - self.starting_offset as usize])
         }
-        
-        ((target_size.0 as f32 * (1.0f32 + paddings_sum)) as u32, target_size.1)
+
+        let denominator = 1.0 - (2.0 * paddings_sum) / instance_count;
+
+        let adjusted_x = (target_size.0 as f32 / denominator).round() as u32;
+        let adjusted_y = (target_size.1 as f32 / max_height) as u32;
+
+        ((adjusted_x, adjusted_y), ((adjusted_y as f32) * (1.0f32 - max_height as f32)) as u32)
     }
 
       pub fn get_descriptor_write_sets(
