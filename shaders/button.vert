@@ -11,13 +11,12 @@ layout(binding = 6) uniform projection{
 } proj; 
 
 
-//layout (location = 0) out vec2 texCoords;
-layout (location = 1) out flat int texID;
-layout (location = 2) out flat uvec3 o_color;
+layout (location = 0) out vec2 texCoords;
+layout (location = 1) out flat uvec3 o_color;
 
 void main() {
     gl_Position = proj.proj * vec4((inVertex * size) + pos, -0.2, 1.0); 
 
-    //texCoords = inVertex; 
+    texCoords = inVertex; 
     o_color = color;
 }

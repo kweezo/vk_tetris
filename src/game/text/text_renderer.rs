@@ -23,7 +23,7 @@ pub struct RenderInfo {
 impl<'a> TextRenderer{
     pub fn new(core: &Core, device: &Device, command_pool: &CommandPool) -> TextRenderer{
 
-        let char_count = 93;
+        let char_count = 57;
         let starting_offset = 33;
 
         let (font_atlas_tex, paddings, heights, chars_per_row, row_count)= TextRenderer::load_font_atlas(core, device, command_pool, char_count, starting_offset);
@@ -37,7 +37,7 @@ impl<'a> TextRenderer{
         let mut font_info = stbtt_fontinfo::default();
         unsafe { assert!(stbtt_InitFont(&mut font_info, dat.as_ptr(), 0) != 0, "Failed to parse the font") }; 
             
-        let (data, paddings, heights, width, height, chars_per_row, row_count) = TextRenderer::create_font_bitmap(core, &mut font_info, 1f32,
+        let (data, paddings, heights, width, height, chars_per_row, row_count) = TextRenderer::create_font_bitmap(core, &mut font_info, 0.5f32,
              starting_offset, char_count);
 
         let tex = TextRenderer::create_font_texture(

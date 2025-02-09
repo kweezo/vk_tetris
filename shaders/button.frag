@@ -1,11 +1,17 @@
 #version 450
 
-//layout (location = 0) in vec2 texCoords;
-layout (location = 2) in flat uvec3 color;
+layout(push_constant) uniform pc{
+    uint pc_texID;
+};
+
+layout(binding = 1) uniform sampler2D textures[3];
+
+layout (location = 0) in vec2 texCoords;
+layout (location = 1) in flat uvec3 color;
 
 layout(location = 0) out vec4 outColor;
 
 void main() {
-    outColor = vec4(color, 1.0);
+    outColor = texture(textures[pc_texID], texCoords);
 }
 

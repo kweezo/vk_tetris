@@ -6,12 +6,16 @@ use super::Button;
 
 pub struct ButtonManager {
     instance_buffer: Option<Buffer>,
+    pressed_buffer: Option<Buffer>,
     instance_data: Vec<u8>,
     instance_count: u32,
 
     creation_command_buffer: CommandBuffer,
     update_command_buffer: CommandBuffer,
-    fence: Fence
+    press_command_buffer: CommandBuffer,
+    fence: Fence,
+
+    texture: Texture
 }
 
 
@@ -21,9 +25,39 @@ impl<'a> ButtonManager {
 
         let creation_command_buffer = CommandBuffer::new(device, command_pool, false);
         let update_command_buffer = CommandBuffer::new(device, command_pool, false);
+        let press_command_buffer = CommandBuffer::new(device, command_pool, false);
         let fence = Fence::new(device, false);
 
-        ButtonManager { instance_buffer: None, instance_data: Vec::new(), instance_count: 0, creation_command_buffer, update_command_buffer, fence }
+        let texture = ButtonManager::load_texture(device, command_pool,&fence);
+
+
+        ButtonManager { instance_buffer: None, pressed_buffer: None, instance_data: Vec::new(), instance_count: 0, creation_command_buffer, press_command_buffer,
+             update_command_buffer, fence, texture}
+    }
+
+    fn load_texture(device: &Device, command_pool: &CommandPool, fence: &Fence) -> Texture {
+
+        let mut command_buffer = CommandBuffer::new(device, command_pool, false);
+
+        command_buffer.begin(device, &vk::CommandBufferInheritanceInfo::default(), vk::CommandBufferUsageFlags::empty());
+
+        let texture = Texture::new("tetromino_piece.png", device, &mut command_buffer, false)
+        .expect("Failed to load the button texture");
+
+        command_buffer.end(device);
+
+
+        CommandBuffer::submit(device, &[command_buffer.get_command_buffer()], &[], &[], fence.get_fence());
+
+        unsafe{
+            device.get_ash_device().wait_for_fences(&[fence.get_fence()], true, std::u64::MAX).expect(
+                "Failed to wait for the button manager fence");
+            device.get_ash_device().reset_fences(&[fence.get_fence()]).expect("Failed to reset the button manager fence");
+        }
+
+        command_buffer.cleanup(device);
+
+        texture
     }
 
     pub fn clear_data(&mut self) {
@@ -44,9 +78,13 @@ impl<'a> ButtonManager {
                 self.instance_buffer = Some(Buffer::new(device, &mut self.update_command_buffer, &self.instance_data, BufferType::Vertex, false));
             }
         };
+        
+        if matches!(self.pressed_buffer, None) {
+            self.pressed_buffer = Some(Buffer::new(device, &mut self.update_command_buffer, &vec![0; self.instance_count as usize],
+                 BufferType::Vertex, true));
+        }
 
         self.instance_count = (self.instance_data.len() / 32) as u32;
-
 
         self.update_command_buffer.end(device);
 
@@ -74,6 +112,13 @@ impl<'a> ButtonManager {
                 return;
             }
 
+            let push_constants = 0u32.to_ne_bytes();
+        
+            device.get_ash_device().cmd_push_constants(
+                command_buffer.get_command_buffer(), render_pass.get_layout(),
+                 vk::ShaderStageFlags::ALL,
+                 0, &push_constants);
+
             device.get_ash_device().cmd_bind_vertex_buffers(
                 command_buffer.get_command_buffer(), 0,
                  &[vertex_buffer.get_buffer(), self.instance_buffer.as_ref().unwrap().get_buffer()], &[0, 0]);
@@ -95,6 +140,12 @@ impl<'a> ButtonManager {
             vk::VertexInputBindingDescription {
                 binding: 1,
                 stride: 32,
+                input_rate: vk::VertexInputRate::INSTANCE,
+            },
+
+            vk::VertexInputBindingDescription {
+                binding: 2,
+                stride: 1,
                 input_rate: vk::VertexInputRate::INSTANCE,
             },
         ];
@@ -130,6 +181,14 @@ impl<'a> ButtonManager {
 
                 format: vk::Format::R32G32B32_UINT,
                 offset: 16,
+            },
+
+            vk::VertexInputAttributeDescription {
+                location: 4,
+                binding: 2,
+
+                format: vk::Format::R8_UINT,
+                offset: 0,
             },
  
         ];
@@ -177,7 +236,36 @@ impl<'a> ButtonManager {
         buttons
     }
 
+    pub fn update_press_states(&mut self, device: &Device, states: Vec<u8>) {
+        if self.instance_count == 0 {
+            return;
+        }
+
+        assert!(self.instance_count as usize == states.len(),
+        "Not all button states included (or too many idfk), aborting");
+
+
+        self.press_command_buffer.begin(device, &vk::CommandBufferInheritanceInfo::default(), vk::CommandBufferUsageFlags::empty());
+
+        self.pressed_buffer.as_mut().unwrap().update(device, &mut self.press_command_buffer, states.as_slice());
+
+        self.press_command_buffer.end(device);
+
+
+        CommandBuffer::submit(device, &[self.press_command_buffer.get_command_buffer()], &[], &[], self.fence.get_fence());
+
+        unsafe{
+            device.get_ash_device().wait_for_fences(&[self.fence.get_fence()], true, std::u64::MAX).expect(
+                "Failed to wait for the button manager fence");
+            device.get_ash_device().reset_fences(&[self.fence.get_fence()]).expect("Failed to reset the button manager fence");
+        }
+
+        self.press_command_buffer.cleanup(device);
+
+    }
+
     pub fn destroy(&mut self, device: &Device) {
+        self.texture.destroy(device);
         match &mut self.instance_buffer {
             Some(buff) => buff.destroy(device),
             None => ()

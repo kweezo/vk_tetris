@@ -11,7 +11,17 @@ pub struct Button {
 
 impl Button {
     pub fn new(device: &Device, command_buffer: &mut CommandBuffer, text_renderer: &TextRenderer, rect: Rect, color: Color, label: &str) -> Button{
-        let text = Text::new(device, command_buffer, text_renderer, label, rect);
+        let text_padding = 0.4f32;
+        //use tetromino tex for button and lighten up when hovered on
+
+        let text_rect = Rect {
+            x: rect.x + (rect.width as f32 * (text_padding / 2.0)) as u32,
+            y: rect.y + (rect.height as f32 * (text_padding / 2.0)) as u32,
+            width: (rect.width as f32 * (1.0 - text_padding)) as u32,
+            height: (rect.height as f32* (1.0 - text_padding)) as u32,
+        };
+
+        let text = Text::new(device, command_buffer, text_renderer, label, text_rect);
 
         Button { rect: rect, text, color }
     }
