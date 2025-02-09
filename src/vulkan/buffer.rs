@@ -206,6 +206,10 @@ impl Buffer {
         self.buffer
     }
 
+    pub fn get_size(&self) -> u64 {
+        self.size
+    }
+
     pub fn destroy(&mut self, device: &core::Device) {
         if self.persistent_staging_buffer {
             unsafe {

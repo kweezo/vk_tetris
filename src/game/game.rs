@@ -170,7 +170,7 @@ impl Game {
         self.update_descriptor_set();
 
         self.board.update(self.window.get_events(), &mut self.audio_manager);
-        self.user_interface.update(self.board.get_game_state(), &self.window, &mut self.board);
+        self.user_interface.update(self.board.get_game_state(), &self.window, self.core.get_device(), &mut self.board);
     }
 
     fn get_image_index(&self) -> u32 {

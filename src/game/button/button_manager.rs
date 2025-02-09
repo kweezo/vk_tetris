@@ -2,6 +2,7 @@ use crate::{game::text::TextRenderer, types::*, *};
 use ash::vk;
 use types::VertexInputData;
 use super::Button;
+use std::collections::HashMap;
 
 
 pub struct ButtonManager {
@@ -14,6 +15,8 @@ pub struct ButtonManager {
     update_command_buffer: CommandBuffer,
     press_command_buffer: CommandBuffer,
     fence: Fence,
+
+    button_indexes: HashMap<String, u32>,
 
     texture: Texture
 }
@@ -32,7 +35,7 @@ impl<'a> ButtonManager {
 
 
         ButtonManager { instance_buffer: None, pressed_buffer: None, instance_data: Vec::new(), instance_count: 0, creation_command_buffer, press_command_buffer,
-             update_command_buffer, fence, texture}
+             update_command_buffer, fence, texture, button_indexes: HashMap::new() }
     }
 
     fn load_texture(device: &Device, command_pool: &CommandPool, fence: &Fence) -> Texture {
@@ -63,10 +66,15 @@ impl<'a> ButtonManager {
     pub fn clear_data(&mut self) {
         self.instance_data.clear();
         self.instance_count = 0;
+        self.button_indexes.clear();
     }
 
     pub fn add_button(&mut self, button: &Button) {
+        
         self.instance_data.extend_from_slice(&button.get_raw_data());
+        self.button_indexes.insert(String::from(button.get_name()), self.instance_count);
+
+        self.instance_count += 1;
     }
 
     pub fn update(&mut self, device: &Device) {
@@ -78,13 +86,6 @@ impl<'a> ButtonManager {
                 self.instance_buffer = Some(Buffer::new(device, &mut self.update_command_buffer, &self.instance_data, BufferType::Vertex, false));
             }
         };
-        
-        if matches!(self.pressed_buffer, None) {
-            self.pressed_buffer = Some(Buffer::new(device, &mut self.update_command_buffer, &vec![0; self.instance_count as usize],
-                 BufferType::Vertex, true));
-        }
-
-        self.instance_count = (self.instance_data.len() / 32) as u32;
 
         self.update_command_buffer.end(device);
 
@@ -121,7 +122,8 @@ impl<'a> ButtonManager {
 
             device.get_ash_device().cmd_bind_vertex_buffers(
                 command_buffer.get_command_buffer(), 0,
-                 &[vertex_buffer.get_buffer(), self.instance_buffer.as_ref().unwrap().get_buffer()], &[0, 0]);
+                 &[vertex_buffer.get_buffer(), self.instance_buffer.as_ref().unwrap().get_buffer(), self.pressed_buffer.as_ref().unwrap().get_buffer()], &[0, 0, 0]);
+
             device.get_ash_device().cmd_bind_index_buffer(command_buffer.get_command_buffer(), index_buffer.get_buffer(), 0, vk::IndexType::UINT16);    
 
             device.get_ash_device().cmd_draw_indexed(command_buffer.get_command_buffer(), 6, self.instance_count,
@@ -236,18 +238,28 @@ impl<'a> ButtonManager {
         buttons
     }
 
-    pub fn update_press_states(&mut self, device: &Device, states: Vec<u8>) {
+    pub fn update_press_states(&mut self, device: &Device, buttons: Vec<&String>) {
         if self.instance_count == 0 {
             return;
         }
 
-        assert!(self.instance_count as usize == states.len(),
+        assert!(self.instance_count as usize == buttons.len(),
         "Not all button states included (or too many idfk), aborting");
 
+        let mut states_u8 = vec![0; buttons.len()];
+
+        for state in buttons {
+            states_u8[*self.button_indexes.get(state).unwrap() as usize] = 1;
+        }
 
         self.press_command_buffer.begin(device, &vk::CommandBufferInheritanceInfo::default(), vk::CommandBufferUsageFlags::empty());
 
-        self.pressed_buffer.as_mut().unwrap().update(device, &mut self.press_command_buffer, states.as_slice());
+        dbg!(self.pressed_buffer.is_none());
+        if self.pressed_buffer.is_none() || (self.pressed_buffer.as_ref().unwrap().get_size() != self.instance_count as u64) {
+            self.pressed_buffer = Some(Buffer::new(device, &mut self.press_command_buffer, states_u8.as_slice(), BufferType::Vertex, true))
+        } else {
+            self.pressed_buffer.as_mut().unwrap().update(device, &mut self.press_command_buffer, states_u8.as_slice());
+        }
 
         self.press_command_buffer.end(device);
 

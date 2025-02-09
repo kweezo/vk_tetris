@@ -45,17 +45,21 @@ impl Button {
             (self.color.0 as u32).to_ne_bytes(),
             (self.color.1 as u32).to_ne_bytes(),
             (self.color.2 as u32).to_ne_bytes(),
-            0u32.to_ne_bytes()
+            1u32.to_ne_bytes()
         ].concat()
     }
 
-    pub fn is_pressed(&self, mouse_pos: (u32, u32)) -> bool {
+    pub fn is_on_cursor(&self, mouse_pos: (u32, u32)) -> bool {
         if mouse_pos.0 > self.rect.x && mouse_pos.0 < self.rect.x + self.rect.width &&
            mouse_pos.1 > self.rect.y && mouse_pos.1 < self.rect.y + self.rect.height {
             return true;
         }
 
         false
+    }
+
+    pub fn get_name(&self) -> &String {
+        self.text.get_text()
     }
 
     pub fn destroy(&mut self, device: &Device) {

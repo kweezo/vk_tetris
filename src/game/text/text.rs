@@ -5,6 +5,8 @@ pub struct Text {
     text_buffer: Buffer,
     text_len: usize,
     rect: Rect,
+    text_raw: String
+
 }
 
 impl Text {
@@ -12,7 +14,7 @@ impl Text {
 
         let (text_buffer, size, y_offset) = Text::upload_text_to_buffer(device, command_buffer, text_renderer, text_raw, &rect);
 
-        Text {rect: Rect { x: rect.x, y: rect.y - y_offset, width: size.0, height: size.1 }, text_len: text_raw.len(), text_buffer}
+        Text {rect: Rect { x: rect.x, y: rect.y - y_offset, width: size.0, height: size.1 }, text_len: text_raw.len(), text_buffer, text_raw: String::from(text_raw)}
     }
 
     fn upload_text_to_buffer(device: &Device, command_buffer: &mut CommandBuffer, text_renderer: &TextRenderer, text_raw: &str, rect: &Rect) -> (Buffer, (u32, u32), u32){
@@ -55,6 +57,10 @@ impl Text {
     pub fn set_size(&mut self, new_size: (u32, u32)) {
         self.rect.width = new_size.0;
         self.rect.width = new_size.1;
+    }
+
+    pub fn get_text(&self) -> &String{
+        &self.text_raw
     }
 
     pub fn destroy(&mut self, device: &Device) {

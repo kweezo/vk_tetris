@@ -55,6 +55,7 @@ impl<'a> UserInterface {
 
         button_manager.add_button(&reset_button);
         button_manager.update(device);
+        button_manager.update_press_states(device, vec![reset_button.get_name()]);
 
         UserInterface {
             vertex_buffer: buffers.0,
@@ -127,29 +128,34 @@ impl<'a> UserInterface {
         (vertex_buffer, index_buffer)
     }
 
-    fn handle_buttons(&mut self, window: &Window, board: &mut Board) {
+    fn handle_buttons(&mut self, window: &Window, device: &Device, board: &mut Board) {
         let mouse_state = window.get_window_handle().get_mouse_button(glfw::MouseButton::Button1);
         let is_pressed = mouse_state == glfw::Action::Press;
 
-        if is_pressed == self.last_pressed || mouse_state == glfw::Action::Release{
-            self.last_pressed = is_pressed;
-            return;
+        let mut is_clicked = false;
+
+        if is_pressed != self.last_pressed && mouse_state != glfw::Action::Release{
+            is_clicked = true;
         }
 
         let (x, y) = window.get_window_handle().get_cursor_pos();
         let mouse_pos = (x as u32, y as u32);
 
 
-        if self.reset_button.is_pressed(mouse_pos) {
-            board.reset_game();
+        if self.reset_button.is_on_cursor(mouse_pos) {
+            if is_clicked {
+                board.reset_game();
+            }
+
+            self.button_manager.update_press_states(device, vec![self.reset_button.get_name()]);
         }
 
 
         self.last_pressed = is_pressed;
     }
 
-    pub fn update(&mut self, state: GameState, window: &Window, board: &mut Board) {
-        self.handle_buttons(window, board);
+    pub fn update(&mut self, state: GameState, window: &Window, device: &Device, board: &mut Board) {
+        self.handle_buttons(window, device, board);
 
         self.game_state = state;
     }
