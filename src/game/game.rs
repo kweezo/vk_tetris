@@ -182,7 +182,7 @@ impl Game {
     fn get_image_index(&self) -> u32 {
         let image_index;
         unsafe{
-            image_index = self.core
+            (image_index)= self.core
             .get_swapchain()
             .get_swapchain_info()
             .swapchain_device
@@ -286,8 +286,8 @@ impl Game {
         );
 
         unsafe{
-            device!(self.core).wait_for_fences(&[self.fence.get_fence()], true, u64::MAX);
-            device!(self.core).reset_fences(&[self.fence.get_fence()]);
+            device!(self).wait_for_fences(&[self.fence.get_fence()], true, u64::MAX).expect("Failed to wait for board transfer fences");
+            device!(self).reset_fences(&[self.fence.get_fence()]).expect("Failed to reset the board transfer fence");
         }
 
         let present_info = vk::PresentInfoKHR {

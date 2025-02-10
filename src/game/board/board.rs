@@ -345,7 +345,7 @@ impl<'a> Board {
                 &mut self.transfer_command_buffer,
                 data.as_slice(),
                 BufferType::Storage,
-                false,
+                true,
             ));
         } else {
             self.instance_buffer.as_mut().unwrap().update(

@@ -1,5 +1,5 @@
 use ash::vk::{self, Handle};
-use vk_mem::Alloc;
+use vk_mem::{Alloc, Allocation};
 
 use super::*;
 
@@ -70,6 +70,16 @@ impl Buffer {
             vk_mem::AllocationCreateFlags::HOST_ACCESS_SEQUENTIAL_WRITE,
         );
 
+        Buffer::update_staging_buffer(device, data, &mut allocation);
+
+        (buffer, allocation)
+    }
+
+    fn update_staging_buffer(
+        device: &core::Device,
+        data: &[u8],
+        mut allocation: &mut Allocation) {
+        
         unsafe {
             let ptr = device
                 .get_allocator()
@@ -80,8 +90,8 @@ impl Buffer {
             device.get_allocator().unmap_memory(&mut allocation);
         }
 
-        (buffer, allocation)
     }
+
 
     fn upload_data_to_buffer(
         device: &core::Device,
@@ -148,13 +158,13 @@ impl Buffer {
             data,
             persistent_staging_buffer,
         ) {
-            Some(e) => Buffer {
+            Some(e) => {Buffer {
                 buffer,
                 allocation,
                 size: data.len() as u64,
                 persistent_staging_buffer,
                 staging_buffer: Some((staging_buffer, Some(e))),
-            },
+            }},
             None => {
                 Buffer {
                 buffer,
@@ -176,7 +186,10 @@ impl Buffer {
             eprintln!("WARNING: Trying to update buffer but the data provided is a different size");
         }
 
+
         if self.persistent_staging_buffer {
+            Buffer::update_staging_buffer(device, data, self.staging_buffer.as_mut().unwrap().1.as_mut().unwrap());
+
             self.staging_buffer.as_mut().unwrap().1 = Buffer::upload_data_to_buffer(
                 device,
                 self.buffer,

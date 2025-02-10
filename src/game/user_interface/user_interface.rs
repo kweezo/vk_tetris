@@ -141,14 +141,18 @@ impl<'a> UserInterface {
         let (x, y) = window.get_window_handle().get_cursor_pos();
         let mouse_pos = (x as u32, y as u32);
 
+        let mut pressed_names = Vec::<&String>::new();
 
         if self.reset_button.is_on_cursor(mouse_pos) {
             if is_clicked {
                 board.reset_game();
             }
 
-            self.button_manager.update_press_states(device, vec![self.reset_button.get_name()], frame_count);
+            pressed_names.push(self.reset_button.get_name());
+
         }
+            
+        self.button_manager.update_press_states(device, pressed_names, frame_count);
 
 
         self.last_pressed = is_pressed;

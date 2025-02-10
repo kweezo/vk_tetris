@@ -16,7 +16,7 @@ void main() {
     outColor = texture(textures[pc_texID], texCoords);
 
     if (is_pressed == 0) {
-        outColor *= 0.2;
+        outColor.xyz *= 0.5;
     }
 }
 

@@ -250,10 +250,8 @@ impl<'a> ButtonManager {
             return;
         }
 
-        assert!(self.instance_count as usize == buttons.len(),
-        "Not all button states included (or too many idfk), aborting");
 
-        let mut states_u8 = vec![0; buttons.len()];
+        let mut states_u8 = vec![0; self.instance_count as usize];
 
         for state in buttons {
             states_u8[*self.button_indexes.get(state).unwrap() as usize] = 1;
@@ -261,7 +259,7 @@ impl<'a> ButtonManager {
 
         self.press_command_buffer.begin(device, &vk::CommandBufferInheritanceInfo::default(), vk::CommandBufferUsageFlags::empty());
 
-        if self.pressed_buffer.is_none() || (self.pressed_buffer.as_ref().unwrap().get_size() != self.instance_count as u64) {
+        if self.pressed_buffer.is_none() {
             self.pressed_buffer = Some(Buffer::new(device, &mut self.press_command_buffer, states_u8.as_slice(), BufferType::Vertex, true))
         } else {
             self.pressed_buffer.as_mut().unwrap().update(device, &mut self.press_command_buffer, states_u8.as_slice());
