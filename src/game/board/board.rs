@@ -1,13 +1,11 @@
 use ash::vk;
 use descriptor::{DescriptorInfo, DescriptorSet};
 use std::{sync::Mutex, time::{SystemTime, UNIX_EPOCH}};
-use vk_mem::Alloc;
 use super::super::*;
 
 use std::{
-    mem,
     pin::Pin,
-    sync::{Arc, RwLock},
+    sync::Arc,
 };
 
 use super::*;
@@ -25,27 +23,6 @@ pub enum GameState{
 }
 
 
-fn transfer_cleanup(
-    device: ash::Device,
-    allocator: Arc<RwLock<Arc<vk_mem::Allocator>>>,
-    fence: vk::Fence,
-    command_buffer: Arc<RwLock<CommandBuffer>>,
-) {
-    unsafe {
-        device
-            .wait_for_fences(&[fence], true, u64::MAX)
-            .expect("Failed to wait for transfer fence");
-        device
-            .reset_fences(&[fence])
-            .expect("Failed to reset the transfer fence");
-    }
-
-    command_buffer
-        .write()
-        .unwrap()
-        .cleanup_raw(allocator.read().unwrap().allocator());
-}
-
 pub struct Board {
     tetromino: Tetromino,
     grid: Grid,
@@ -59,13 +36,11 @@ pub struct Board {
     instance_buffer: Option<Buffer>,
     projection_uniform: Buffer,
 
-    transfer_command_buffer: Arc<RwLock<CommandBuffer>>,
+    transfer_command_buffer: CommandBuffer,
 
     transfer_finished_fence: Fence,
 
     transfer_finished_thread_handle: Option<std::thread::JoinHandle<()>>,
-
-    transfer_semaphore: Semaphore,
 
     fall_interval: u32,
     previous_interval: u128,
@@ -89,8 +64,6 @@ impl<'a> Board {
     ) -> Board {
         let mut transfer_command_buffer = CommandBuffer::new(device, command_pool, false);
 
-        let transfer_semaphore = Semaphore::new(device);
-
         let buffers = Board::initialize_buffers(
             device,
             &mut transfer_command_buffer,
@@ -108,10 +81,9 @@ impl<'a> Board {
 
         Board {
             tetromino,
-            transfer_command_buffer: Arc::new(RwLock::new(transfer_command_buffer)),
+            transfer_command_buffer: transfer_command_buffer,
             instance_buffer: None,
             previous_tetromino_count: 0,
-            transfer_semaphore,
             vertex_buffer: buffers.0,
             index_buffer: buffers.1,
             projection_uniform: buffers.2,
@@ -232,6 +204,7 @@ impl<'a> Board {
         )
     }
 
+    
     fn record_draw_command_buffer(
         &self,
         device: &Device,
@@ -353,8 +326,8 @@ impl<'a> Board {
         data
     }
 
-    pub fn record_transfer_command_buffer(&mut self, device: &Device, data: &Vec<u8>) {
-        self.transfer_command_buffer.read().unwrap().begin(
+    pub fn handle_transfer(&mut self, device: &Device, data: &Vec<u8>) {
+        self.transfer_command_buffer.begin(
             device,
             &vk::CommandBufferInheritanceInfo::default(),
             vk::CommandBufferUsageFlags::empty(),
@@ -369,7 +342,7 @@ impl<'a> Board {
 
             self.instance_buffer = Some(Buffer::new(
                 device,
-                &mut self.transfer_command_buffer.write().unwrap(),
+                &mut self.transfer_command_buffer,
                 data.as_slice(),
                 BufferType::Storage,
                 false,
@@ -377,12 +350,27 @@ impl<'a> Board {
         } else {
             self.instance_buffer.as_mut().unwrap().update(
                 device,
-                &mut self.transfer_command_buffer.write().unwrap(),
+                &mut self.transfer_command_buffer,
                 data.as_slice(),
             );
         }
 
-        self.transfer_command_buffer.read().unwrap().end(device);
+        self.transfer_command_buffer.end(device);
+
+        CommandBuffer::submit(device, &[self.transfer_command_buffer.get_command_buffer()], &[], &[], self.transfer_finished_fence.get_fence());
+
+        unsafe {
+            device
+                .get_ash_device()
+                .wait_for_fences(&[self.transfer_finished_fence.get_fence()], true, u64::MAX)
+                .expect("Failed to wait for transfer fence");
+            device
+                .get_ash_device()
+                .reset_fences(&[self.transfer_finished_fence.get_fence()])
+                .expect("Failed to reset the transfer fence");
+        }
+
+        self.transfer_command_buffer.cleanup(device);
     }
 
     fn check_collision_in_dir(&self, x: i8, y: i8) -> bool {
@@ -560,41 +548,13 @@ impl<'a> Board {
         if data.is_empty() {
             return;
         }
-        self.record_transfer_command_buffer(device, &data);
+        self.handle_transfer(device, &data);
         self.record_draw_command_buffer(
             device,
             render_pass,
             command_buffer,
             subpass_index,
         );
-
-        CommandBuffer::submit(
-            device,
-            &[self
-                .transfer_command_buffer
-                .read()
-                .unwrap()
-                .get_command_buffer()],
-            &[],
-            &[self.transfer_semaphore.get_semaphore()],
-            self.transfer_finished_fence.get_fence(),
-        );
-
-        match mem::take(&mut self.transfer_finished_thread_handle) {
-            None => (),
-            Some(handle) => handle.join().unwrap(),
-        };
-
-        self.transfer_finished_thread_handle = Some(std::thread::spawn({
-            let allocator = device.get_allocator_lock();
-            let device = device.get_ash_device().clone();
-            let fence = self.transfer_finished_fence.get_fence();
-            let command_buffer = self.transfer_command_buffer.clone();
-
-            move || {
-                transfer_cleanup(device, allocator, fence, command_buffer);
-            }
-        }));
     }
 
     pub fn add_tetromino(&mut self, x: i8, y: i8) {
@@ -701,10 +661,6 @@ impl<'a> Board {
         );
 
         ([buffer_write_set_instance_dat], descriptor_infos)
-    }
-
-    pub fn get_transfer_semaphore(&self) -> vk::Semaphore {
-        self.transfer_semaphore.get_semaphore()
     }
 
     pub fn get_game_state(&self) -> GameState {

@@ -16,7 +16,7 @@ pub struct Buffer {
     size: u64,
 
     persistent_staging_buffer: bool,
-    staging_buffer: Option<(vk::Buffer, vk_mem::Allocation)>,
+    staging_buffer: Option<(vk::Buffer, Option<vk_mem::Allocation>)>,
 }
 
 impl Buffer {
@@ -139,7 +139,6 @@ impl Buffer {
         );
 
         let (staging_buffer, staging_allocation) = Buffer::setup_staging_buffer(device, data);
-
         match Buffer::upload_data_to_buffer(
             device,
             buffer,
@@ -154,15 +153,16 @@ impl Buffer {
                 allocation,
                 size: data.len() as u64,
                 persistent_staging_buffer,
-                staging_buffer: Some((staging_buffer, e)),
+                staging_buffer: Some((staging_buffer, Some(e))),
             },
-            None => Buffer {
+            None => {
+                Buffer {
                 buffer,
                 allocation,
                 size: data.len() as u64,
                 staging_buffer: None,
                 persistent_staging_buffer,
-            },
+            }},
         }
     }
 
@@ -177,11 +177,11 @@ impl Buffer {
         }
 
         if self.persistent_staging_buffer {
-            Buffer::upload_data_to_buffer(
+            self.staging_buffer.as_mut().unwrap().1 = Buffer::upload_data_to_buffer(
                 device,
                 self.buffer,
                 self.staging_buffer.as_ref().unwrap().0,
-                self.staging_buffer.take().unwrap().1,
+                self.staging_buffer.as_mut().unwrap().1.take().unwrap(),
                 command_buffer,
                 data,
                 true,
@@ -215,7 +215,7 @@ impl Buffer {
             unsafe {
                 device.get_allocator().destroy_buffer(
                     self.staging_buffer.as_ref().unwrap().0,
-                    &mut self.staging_buffer.as_mut().unwrap().1,
+                    &mut self.staging_buffer.as_mut().unwrap().1.as_mut().unwrap(),
                 )
             };
         }

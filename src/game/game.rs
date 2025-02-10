@@ -21,7 +21,9 @@ pub struct Game {
     render_pass: RenderPass,
 
     command_pool: CommandPool,
+
     command_buffer: CommandBuffer,
+    fence: Fence,
 
     set: DescriptorSet,
 
@@ -33,7 +35,9 @@ pub struct Game {
 
     audio_manager: AudioManager,
 
-    soundtrack: Sound
+    soundtrack: Sound,
+    
+    frame_count: u32,
 }
 
 impl Game {
@@ -73,9 +77,11 @@ impl Game {
 
         let mut soundtrack = Sound::new("music.wav",  -20.0, true);
 
+        let fence = Fence::new(core.get_device(), false);
+
        // audio_manager.play(&mut soundtrack);
 
-        Game { window, core, render_pass, command_pool, command_buffer, set, user_interface, board, image_acquisition_fence, render_finish_semaphore, audio_manager, soundtrack}
+        Game { window, core, render_pass, command_pool, command_buffer, set, user_interface, board, image_acquisition_fence, render_finish_semaphore, audio_manager, soundtrack, frame_count: 0, fence}
     }
 
     fn load_shaders(core: &Core) -> Vec<Shader> {
@@ -170,7 +176,7 @@ impl Game {
         self.update_descriptor_set();
 
         self.board.update(self.window.get_events(), &mut self.audio_manager);
-        self.user_interface.update(self.board.get_game_state(), &self.window, self.core.get_device(), &mut self.board);
+        self.user_interface.update(self.board.get_game_state(), &self.window, self.core.get_device(), &mut self.board, self.frame_count);
     }
 
     fn get_image_index(&self) -> u32 {
@@ -274,13 +280,15 @@ impl Game {
         CommandBuffer::submit(
             self.core.get_device(),
             &[self.command_buffer.get_command_buffer()],
-            &[(
-                self.board.get_transfer_semaphore(),
-                vk::PipelineStageFlags::VERTEX_INPUT,
-            )],
+            &[],
             &[self.render_finish_semaphore.get_semaphore()],
-            vk::Fence::null(),
+            self.fence.get_fence(),
         );
+
+        unsafe{
+            device!(self.core).wait_for_fences(&[self.fence.get_fence()], true, u64::MAX);
+            device!(self.core).reset_fences(&[self.fence.get_fence()]);
+        }
 
         let present_info = vk::PresentInfoKHR {
             s_type: vk::StructureType::PRESENT_INFO_KHR,
@@ -307,7 +315,6 @@ impl Game {
     fn render(&mut self) {
         let image_index = self.get_image_index();
 
-        self.reset_command_pool();
         self.begin_command_buffer(image_index);
 
         self.user_interface.draw(self.core.get_device(), &self.render_pass, &self.command_buffer, 0, self.board.get_tetromino_instance_count());
@@ -326,8 +333,11 @@ impl Game {
 
     pub fn game_loop(&mut self) {
         while !self.window.get_window_handle().should_close() {
+            self.reset_command_pool();
             self.update();
             self.render();
+
+            self.frame_count += 1;
         }
     }
 }

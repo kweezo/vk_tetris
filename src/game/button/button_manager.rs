@@ -18,7 +18,9 @@ pub struct ButtonManager {
 
     button_indexes: HashMap<String, u32>,
 
-    texture: Texture
+    texture: Texture,
+
+    last_press_update_frame: u32
 }
 
 
@@ -35,7 +37,7 @@ impl<'a> ButtonManager {
 
 
         ButtonManager { instance_buffer: None, pressed_buffer: None, instance_data: Vec::new(), instance_count: 0, creation_command_buffer, press_command_buffer,
-             update_command_buffer, fence, texture, button_indexes: HashMap::new() }
+             update_command_buffer, fence, texture, button_indexes: HashMap::new(), last_press_update_frame: std::u32::MAX}
     }
 
     fn load_texture(device: &Device, command_pool: &CommandPool, fence: &Fence) -> Texture {
@@ -105,7 +107,12 @@ impl<'a> ButtonManager {
     pub fn draw(&self, device: &Device, command_buffer: &CommandBuffer, vertex_buffer: &Buffer, index_buffer: &Buffer, render_pass: &RenderPass, subpass_index: u32) {
         unsafe{
             device.get_ash_device().cmd_next_subpass(command_buffer.get_command_buffer(), vk::SubpassContents::INLINE);
+        }
+        if self.pressed_buffer.is_none() || self.instance_buffer.is_none() {
+            return;
+        }
 
+        unsafe{
             device.get_ash_device().cmd_bind_pipeline(command_buffer.get_command_buffer(),
              vk::PipelineBindPoint::GRAPHICS, render_pass.get_pipeline(subpass_index as usize));
 
@@ -238,8 +245,8 @@ impl<'a> ButtonManager {
         buttons
     }
 
-    pub fn update_press_states(&mut self, device: &Device, buttons: Vec<&String>) {
-        if self.instance_count == 0 {
+    pub fn update_press_states(&mut self, device: &Device, buttons: Vec<&String>, frame_count: u32) {
+        if self.instance_count == 0 || self.last_press_update_frame == frame_count{
             return;
         }
 
@@ -254,7 +261,6 @@ impl<'a> ButtonManager {
 
         self.press_command_buffer.begin(device, &vk::CommandBufferInheritanceInfo::default(), vk::CommandBufferUsageFlags::empty());
 
-        dbg!(self.pressed_buffer.is_none());
         if self.pressed_buffer.is_none() || (self.pressed_buffer.as_ref().unwrap().get_size() != self.instance_count as u64) {
             self.pressed_buffer = Some(Buffer::new(device, &mut self.press_command_buffer, states_u8.as_slice(), BufferType::Vertex, true))
         } else {
@@ -274,11 +280,17 @@ impl<'a> ButtonManager {
 
         self.press_command_buffer.cleanup(device);
 
+        self.last_press_update_frame = frame_count;
     }
 
     pub fn destroy(&mut self, device: &Device) {
         self.texture.destroy(device);
         match &mut self.instance_buffer {
+            Some(buff) => buff.destroy(device),
+            None => ()
+        }
+
+        match &mut self.pressed_buffer {
             Some(buff) => buff.destroy(device),
             None => ()
         }
