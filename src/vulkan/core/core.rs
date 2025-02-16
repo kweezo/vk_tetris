@@ -41,4 +41,8 @@ impl Core {
     pub fn get_swapchain(&self) -> &Swapchain {
         &self.swapchain
     }
+    
+    pub fn recreate_swapchain(&mut self, window: &Window) {
+        self.swapchain.recreate(window, &self.instance, &mut self.device);
+    }
 }

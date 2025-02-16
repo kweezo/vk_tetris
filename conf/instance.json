@@ -4,7 +4,8 @@
     ],
     "optional_extensions": [],
     "validation_layers": [
-        "VK_LAYER_KHRONOS_validation"
+        "VK_LAYER_KHRONOS_validation",
+        "VK_LAYER_LUNARG_api_dump"
     ],
     "enable_layers": true
 }

@@ -1,5 +1,5 @@
 use super::{core::*, *};
-use ash::vk::{self, Handle};
+use ash::vk;
 
 pub struct CommandBuffer {
     command_buffer: vk::CommandBuffer,

@@ -1,5 +1,5 @@
 use crate::{game::text::TextRenderer, types::*, *};
-use ash::vk;
+use ash::vk::{self, Handle};
 use types::VertexInputData;
 use super::Button;
 use std::collections::HashMap;
@@ -34,7 +34,6 @@ impl<'a> ButtonManager {
         let fence = Fence::new(device, false);
 
         let texture = ButtonManager::load_texture(device, command_pool,&fence);
-
 
         ButtonManager { instance_buffer: None, pressed_buffer: None, instance_data: Vec::new(), instance_count: 0, creation_command_buffer, press_command_buffer,
              update_command_buffer, fence, texture, button_indexes: HashMap::new(), last_press_update_frame: std::u32::MAX}
@@ -249,7 +248,6 @@ impl<'a> ButtonManager {
         if self.instance_count == 0 || self.last_press_update_frame == frame_count{
             return;
         }
-
 
         let mut states_u8 = vec![0; self.instance_count as usize];
 

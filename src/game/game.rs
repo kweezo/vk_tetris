@@ -1,6 +1,8 @@
+use ::core::panic;
+
 use button::ButtonManager;
 use descriptor::DescriptorSet;
-use ash::vk;
+use ash::vk::{self, Handle};
 
 use crate::*;
 use super::*;
@@ -179,10 +181,11 @@ impl Game {
         self.user_interface.update(self.board.get_game_state(), &self.window, self.core.get_device(), &mut self.board, self.frame_count);
     }
 
-    fn get_image_index(&self) -> u32 {
-        let image_index;
+    fn get_image_index(&mut self) -> u32 {
+        let mut image_index = 0;
+        let mut is_swapchain_suboptimal = false;
         unsafe{
-            (image_index)= self.core
+            let result = self.core
             .get_swapchain()
             .get_swapchain_info()
             .swapchain_device
@@ -191,9 +194,23 @@ impl Game {
                 u64::MAX,
                 vk::Semaphore::null(),
                 self.image_acquisition_fence.get_fence(),
-            )
-            .expect("Failed to acquire the next swapchain image")
-            .0;
+            );
+
+            match result {
+                Ok(res) => {
+                    image_index = res.0;
+                    is_swapchain_suboptimal = res.1
+                },
+                Err(err) => {
+                    match err {
+                        vk::Result::ERROR_OUT_OF_DATE_KHR => {
+                            self.handle_resize();
+                        },
+
+                        _ => panic!("Failed to acquire the next swapchain image")
+                    }
+                }
+            }
 
             device!(self)
                 .wait_for_fences(&[self.image_acquisition_fence.get_fence()], true, u64::MAX)
@@ -202,6 +219,12 @@ impl Game {
                 .reset_fences(&[self.image_acquisition_fence.get_fence()])
                 .expect("Failed to reset the image acquisition fence");
         }
+
+        if !is_swapchain_suboptimal {
+            return image_index;
+        }
+
+        self.handle_resize();
 
         image_index
     }
@@ -270,7 +293,12 @@ impl Game {
         }
     }
 
-    fn end_command_buffer_and_present(&self, image_index: u32) {
+    fn handle_resize(&mut self) {
+        self.core.recreate_swapchain(&self.window);
+        self.render_pass.recreate_framebuffers(&self.window, &self.core.get_device(), &self.core.get_swapchain());
+    }
+
+    fn end_command_buffer_and_present(&mut self, image_index: u32) {
         unsafe{
             device!(self).cmd_end_render_pass(self.command_buffer.get_command_buffer());
         }
@@ -302,12 +330,15 @@ impl Game {
             ..Default::default()
         };
 
-        unsafe{
+        let result = unsafe{
             self.core.get_swapchain()
                 .get_swapchain_info()
                 .swapchain_device
                 .queue_present(self.core.get_device().get_queue(), &present_info)
-                .expect("Failed to present image");
+        };
+
+        if matches!(result, Err(vk::Result::ERROR_OUT_OF_DATE_KHR)) {
+            self.handle_resize();
         }
 
     }
@@ -326,7 +357,11 @@ impl Game {
             );
         }
 
-        self.board.draw(self.core.get_device(), &self.render_pass, &self.command_buffer, 3);
+        self.board.draw(self.core.get_device(), &self.render_pass, &self.command_buffer, 3, 
+       (
+            self.core.get_swapchain().get_swapchain_info().extent.width,
+            self.core.get_swapchain().get_swapchain_info().extent.height,
+        ));
 
         self.end_command_buffer_and_present(image_index);
     }

@@ -1,6 +1,6 @@
 use ash::vk;
 
-use crate::vulkan::shader::Shader;
+use crate::{vulkan::shader::Shader, window::Window};
 
 use super::{core::*, *};
 
@@ -22,7 +22,7 @@ impl DepthImage {
             height,
             image::Type::DEPTH,
             vk::Format::D32_SFLOAT,
-            vk::SampleCountFlags::TYPE_4
+            vk::SampleCountFlags::TYPE_4,
         );
 
         let view_info = vk::ImageViewCreateInfo {
@@ -60,7 +60,7 @@ impl ColorImage {
             height,
             image::Type::COLOR,
             vk::Format::B8G8R8A8_SRGB,
-            vk::SampleCountFlags::TYPE_4
+            vk::SampleCountFlags::TYPE_4,
         );
 
         let view_info = vk::ImageViewCreateInfo {
@@ -97,7 +97,7 @@ pub struct RenderPass {
     framebuffers: Vec<vk::Framebuffer>,
 
     depth_image: DepthImage,
-    color_image: ColorImage
+    color_image: ColorImage,
 }
 
 impl RenderPass {
@@ -108,8 +108,10 @@ impl RenderPass {
         pipeline_vertex_input_states: &[vk::PipelineVertexInputStateCreateInfo],
         set_layout: vk::DescriptorSetLayout,
     ) -> RenderPass {
-
-        assert!(pipeline_vertex_input_states.len() == shaders.len(), "lenth of pipeline_vertex_input_state doesn't match the length of shaders");
+        assert!(
+            pipeline_vertex_input_states.len() == shaders.len(),
+            "lenth of pipeline_vertex_input_state doesn't match the length of shaders"
+        );
 
         let layout = RenderPass::create_pipeline_layout(device, set_layout);
 
@@ -152,7 +154,7 @@ impl RenderPass {
             render_pass,
             swapchain.get_image_views(),
             depth_image.image_view,
-            color_image.image_view
+            color_image.image_view,
         );
 
         RenderPass {
@@ -161,7 +163,7 @@ impl RenderPass {
             render_pass,
             framebuffers,
             depth_image,
-            color_image
+            color_image,
         }
     }
 
@@ -268,7 +270,7 @@ impl RenderPass {
         let color_blend_attachment_state = vk::PipelineColorBlendAttachmentState {
             blend_enable: true as u32,
             color_write_mask: vk::ColorComponentFlags::RGBA,
-            
+
             src_color_blend_factor: vk::BlendFactor::SRC_ALPHA,
             dst_color_blend_factor: vk::BlendFactor::ONE_MINUS_SRC_ALPHA,
 
@@ -289,7 +291,8 @@ impl RenderPass {
             ..Default::default()
         };
 
-        let dynamic_states = [/*vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR cant be assed lmao*/];
+        let dynamic_states =
+            [/*vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR cant be assed lmao*/];
 
         let dynamic_state = vk::PipelineDynamicStateCreateInfo {
             s_type: vk::StructureType::PIPELINE_DYNAMIC_STATE_CREATE_INFO,
@@ -384,9 +387,8 @@ impl RenderPass {
 
         let color_resolve_attachment_ref = vk::AttachmentReference {
             attachment: 2,
-            layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL
+            layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
         };
-
 
         let mut subpass_descriptions =
             Vec::<vk::SubpassDescription>::with_capacity(color_subpass_count as usize);
@@ -463,7 +465,7 @@ impl RenderPass {
         render_pass: vk::RenderPass,
         swapchain_image_views: &[vk::ImageView],
         depth_image_view: vk::ImageView,
-        color_image_view: vk::ImageView
+        color_image_view: vk::ImageView,
     ) -> Vec<vk::Framebuffer> {
         let mut framebuffers = vec![vk::Framebuffer::null(); 3];
 
@@ -472,7 +474,12 @@ impl RenderPass {
                 s_type: vk::StructureType::FRAMEBUFFER_CREATE_INFO,
                 render_pass,
                 attachment_count: 3,
-                p_attachments: [color_image_view, depth_image_view, swapchain_image_views[i as usize],].as_ptr(),
+                p_attachments: [
+                    color_image_view,
+                    depth_image_view,
+                    swapchain_image_views[i as usize],
+                ]
+                .as_ptr(),
                 width: extent.width,
                 height: extent.height,
                 layers: 1,
@@ -488,6 +495,33 @@ impl RenderPass {
         }
 
         framebuffers
+    }
+
+    pub fn recreate_framebuffers(
+        &mut self,
+        window: &Window,
+        device: &Device,
+        swapchain: &Swapchain,
+    ) {
+
+        self.color_image.image.destroy(device);
+        self.depth_image.image.destroy(device);
+
+        self.color_image = ColorImage::new(device, window.get_extent().0, window.get_extent().1);
+        self.depth_image = DepthImage::new(device, window.get_extent().0, window.get_extent().1);
+
+        self.framebuffers = RenderPass::create_framebuffers(
+            device,
+            swapchain.get_swapchain_info().image_count,
+            vk::Extent2D {
+                width: window.get_extent().0,
+                height: window.get_extent().1,
+            },
+            self.render_pass,
+            &swapchain.get_image_views(),
+            self.depth_image.image_view,
+            self.color_image.image_view,
+        );
     }
 
     pub fn get_pipeline(&self, i: usize) -> vk::Pipeline {

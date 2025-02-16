@@ -8,7 +8,26 @@ pub struct Window {
     height: u32,
 }
 
+static mut WIDTH: u32 = 0u32;
+static mut HEIGHT: u32 = 0u32;
+
+fn size_callback(_window: &mut glfw::Window, new_width: i32, new_height: i32) {
+
+    if new_width == 0 || new_height == 0 {
+        unsafe{
+            WIDTH = 1;
+            HEIGHT = 1;
+        }
+    }
+
+    unsafe{
+        WIDTH = new_width as u32;
+        HEIGHT = new_height as u32;
+    }
+}
+
 impl Window {
+
     fn error_callback(err: glfw::Error, description: String) {
         eprintln!("GLFW error {:?}: {:?}", err, description);
     }
@@ -23,6 +42,7 @@ impl Window {
             .expect("Failed to create a GLFW window");
 
         window.set_key_polling(true);
+        window.set_size_callback(size_callback);
 
         Window {
             glfw_context: context,
@@ -54,6 +74,8 @@ impl Window {
     }
 
     pub fn get_extent(&self) -> (u32, u32) {
-        (self.width, self.height)
+        unsafe{
+            (WIDTH, HEIGHT)
+        }
     }
 }

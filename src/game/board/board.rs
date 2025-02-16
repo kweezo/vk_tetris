@@ -22,6 +22,59 @@ pub enum GameState{
     END
 }
 
+#[inline]
+fn lerp(x: f32, y: f32, a: f32) -> f32{
+    x * (1.0 - a) + y * a
+}
+
+#[inline]
+fn length(x: f32, y: f32) -> f32{
+    (x.powf(2.0) + y.powf(2.0)).sqrt()
+}
+
+struct ScreenShake {
+    points: [(f32, f32); 10],
+    last_dir_change: u64,
+    curr_point_index: usize,
+    pos: (f32, f32)
+}
+
+impl ScreenShake {
+    pub fn new() -> ScreenShake {
+        let mut rng = rand::thread_rng();
+
+        let mut points = [(0f32, 0f32); 10];
+
+        for p in points.iter_mut() {
+            *p = (rng.gen_range(-100..100) as f32 / 10.0,
+            rng.gen_range(-100..100) as f32 / 10.0);
+        }
+
+        ScreenShake { points, last_dir_change: 0, curr_point_index: 0, pos: (0f32, 0f32) }
+    }
+
+    pub fn update(&mut self, curr_time: u64) -> (f32, f32) {
+
+        if curr_time - self.last_dir_change > 100 {
+            self.last_dir_change = curr_time;
+            self.curr_point_index += 1;
+        }
+
+        if self.curr_point_index == self.points.len() {
+            return (std::f32::NAN, std::f32::NAN);
+        }
+        
+        let scalar = lerp(
+            length(self.pos.0, self.pos.1),
+            length(self.points[self.curr_point_index].0, self.points[self.curr_point_index].1 ), 1.0);
+
+        self.pos.0 *= scalar;
+        self.pos.1 *= scalar;
+
+        self.pos
+    }
+}
+
 
 pub struct Board {
     tetromino: Tetromino,
@@ -53,7 +106,9 @@ pub struct Board {
 
     rng: ThreadRng,
 
-    place_sound: Sound
+    place_sound: Sound,
+
+    screen_shake: Option<ScreenShake>
 }
 
 impl<'a> Board {
@@ -97,16 +152,17 @@ impl<'a> Board {
             rng,
             game_state: GameState::RUNNING,
             score: Arc::new(Mutex::new(0)),
-            place_sound
+            place_sound,
+            screen_shake: None
         }
     }
 
-    fn get_projection_matrix(screen_res: (u32, u32)) -> [f32; 16] {
-        let left = 0f32;
-        let right = screen_res.0 as f32;
+    fn get_projection_matrix(screen_res: (u32, u32), offset: (f32, f32)) -> [f32; 16] {
+        let left = 0f32 + offset.0;
+        let right = screen_res.0 as f32 + offset.0;
 
-        let bottom = 0f32;
-        let top = screen_res.1 as f32;
+        let bottom = 0f32 + offset.1;
+        let top = screen_res.1 as f32 + offset.1;
 
         let near = -1f32;
         let far = 1f32;
@@ -168,7 +224,7 @@ impl<'a> Board {
         let tetromino_tex = Texture::new(tetromino_tex_path, device, command_buffer, false)
             .expect("Failed to load the base tetromino texture");
 
-        let projection = Board::get_projection_matrix(screen_res);
+        let projection = Board::get_projection_matrix(screen_res, (0.0, 0.0));
         let projection_buffer = Buffer::new(
             device,
             command_buffer,
@@ -202,6 +258,10 @@ impl<'a> Board {
             projection_buffer,
             tetromino_tex,
         )
+    }
+
+    fn screen_shake(&self) {
+
     }
 
     
@@ -326,12 +386,24 @@ impl<'a> Board {
         data
     }
 
-    pub fn handle_transfer(&mut self, device: &Device, data: &Vec<u8>) {
+    fn handle_screen_shake(&mut self, device: &Device, screen_res: (u32, u32)) {
+        if self.screen_shake.is_none() {
+            return;
+        }
+
+        let projection = Board::get_projection_matrix(screen_res, self.screen_shake.as_ref().unwrap().pos);
+
+        self.projection_uniform.update(device, &mut self.transfer_command_buffer, bytes_of(&projection));
+    }
+
+    pub fn handle_transfer(&mut self, device: &Device, data: &Vec<u8>, screen_res: (u32, u32)) {
         self.transfer_command_buffer.begin(
             device,
             &vk::CommandBufferInheritanceInfo::default(),
             vk::CommandBufferUsageFlags::empty(),
         );
+
+        self.handle_screen_shake(device, screen_res);
 
         if data.len() != self.previous_tetromino_count {
             self.previous_tetromino_count = data.len();
@@ -357,6 +429,7 @@ impl<'a> Board {
 
         self.transfer_command_buffer.end(device);
 
+
         CommandBuffer::submit(device, &[self.transfer_command_buffer.get_command_buffer()], &[], &[], self.transfer_finished_fence.get_fence());
 
         unsafe {
@@ -369,7 +442,7 @@ impl<'a> Board {
                 .reset_fences(&[self.transfer_finished_fence.get_fence()])
                 .expect("Failed to reset the transfer fence");
         }
-
+        
         self.transfer_command_buffer.cleanup(device);
     }
 
@@ -502,6 +575,10 @@ impl<'a> Board {
             }
         }
 
+        if consecutive_clears != 0 {
+            self.screen_shake = Some(ScreenShake::new());
+        }
+
 
         *self.score.lock().expect("Failed to lock") +=  match consecutive_clears {
             0 => 0,
@@ -542,13 +619,14 @@ impl<'a> Board {
         render_pass: &RenderPass,
         command_buffer: &CommandBuffer,
         subpass_index: u32,
+        screen_res: (u32, u32)
     ) {
         let data = Board::get_instance_data(self);
 
         if data.is_empty() {
             return;
         }
-        self.handle_transfer(device, &data);
+        self.handle_transfer(device, &data, screen_res);
         self.record_draw_command_buffer(
             device,
             render_pass,

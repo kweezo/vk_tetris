@@ -27,15 +27,21 @@ pkgs.mkShell {
     pkgs.alsa-lib
     pkgs.pkg-config
     pkgs.rustup
+    pkgs.bison
+    pkgs.libxkbcommon
+    pkgs.wget
+    pkgs.gfxreconstruct
+    pkgs.vulkan-tools-lunarg
   ];
   
 
   LD_LIBRARY_PATH= with pkgs; lib.makeLibraryPath [
     libGL
     libxkbcommon
+    vulkan-tools-lunarg
   ]; 
 
-  VK_LAYER_PATH = "${pkgs.vulkan-validation-layers}/share/vulkan/explicit_layer.d"; 
+  VK_LAYER_PATH = "${pkgs.vulkan-validation-layers}/share/vulkan/explicit_layer.d:${pkgs.gfxreconstruct}/share/vulkan/explicit_layer.d:tools/sdk/x86_64/lib:${pkgs.vulkan-tools-lunarg}/share/vulkan/explicit_layer.d"; 
   RUST_SRC_PATH = "${pkgs.rust.packages.stable.rustPlatform.rustLibSrc}";
 
   "terminal.integrated.defaultProfile.linux" = "null";

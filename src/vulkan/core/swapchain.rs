@@ -42,6 +42,7 @@ impl Swapchain {
         surface_khr: vk::SurfaceKHR,
         surface_instance: &khr::surface::Instance,
         format: vk::SurfaceFormatKHR,
+        old_swapchain: vk::SwapchainKHR
     ) -> SwapchainInfo {
         let capabilities = unsafe {
             surface_instance.get_physical_device_surface_capabilities(
@@ -96,7 +97,7 @@ impl Swapchain {
             composite_alpha: vk::CompositeAlphaFlagsKHR::OPAQUE,
             present_mode: vk::PresentModeKHR::FIFO,
             clipped: true as u32, // because yes
-            old_swapchain: vk::SwapchainKHR::null(),
+            old_swapchain: old_swapchain,
             image_format: format.format,
             ..Default::default()
         };
@@ -189,6 +190,7 @@ impl Swapchain {
             surface_khr,
             &surface_instance,
             format,
+            vk::SwapchainKHR::null()
         );
         let image_views = Swapchain::create_swapchain_image_views(
             device,
@@ -205,6 +207,13 @@ impl Swapchain {
         }
     }
 
+    pub fn recreate(&mut self, window: &Window, instance: &Instance, device: &mut Device) {
+        self.swapchain_info = Swapchain::create_swapchain(window, instance, device, self.surface_khr, &self.surface_instance,
+        self.swapchain_info.format, self.swapchain_info.swapchain);
+
+        self.image_views = Swapchain::create_swapchain_image_views(device, &self.swapchain_info.swapchain_device, self.swapchain_info.swapchain, self.swapchain_info.format.format);
+    }
+
     pub fn get_swapchain_info(&self) -> &SwapchainInfo {
         &self.swapchain_info
     }
@@ -218,4 +227,4 @@ impl Swapchain {
             self.surface_instance.get_physical_device_surface_capabilities(physical_device, self.surface_khr)
         }.expect("Failed to get the physical device surface capabilities")
     }
-}
+    }
