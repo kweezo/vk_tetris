@@ -261,9 +261,14 @@ impl RenderPass {
 
         let depth_stencil_state = vk::PipelineDepthStencilStateCreateInfo {
             s_type: vk::StructureType::PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
+
             depth_test_enable: true as u32,
             depth_write_enable: true as u32,
-            depth_compare_op: vk::CompareOp::LESS,
+            depth_compare_op: vk::CompareOp::GREATER,
+
+            min_depth_bounds: 0.0,
+            max_depth_bounds: 1.0,
+
             ..Default::default()
         };
 
@@ -437,10 +442,12 @@ impl RenderPass {
             })
         }
 
+        let attachments = [color_attachment, depth_attachment, color_resolve_attachment];
+
         let render_pass_info = vk::RenderPassCreateInfo {
             s_type: vk::StructureType::RENDER_PASS_CREATE_INFO,
             attachment_count: 3,
-            p_attachments: [color_attachment, depth_attachment, color_resolve_attachment].as_ptr(), //invalidated?
+            p_attachments: attachments.as_ptr(),
             subpass_count: subpass_descriptions.len() as u32,
             p_subpasses: subpass_descriptions.as_ptr(),
             dependency_count: subpass_dependencies.len() as u32,
@@ -470,16 +477,17 @@ impl RenderPass {
         let mut framebuffers = vec![vk::Framebuffer::null(); 3];
 
         for i in 0..image_count {
+            let attachments = [
+                    color_image_view,
+                    depth_image_view,
+                    swapchain_image_views[i as usize],
+            ];
+
             let create_info = vk::FramebufferCreateInfo {
                 s_type: vk::StructureType::FRAMEBUFFER_CREATE_INFO,
                 render_pass,
                 attachment_count: 3,
-                p_attachments: [
-                    color_image_view,
-                    depth_image_view,
-                    swapchain_image_views[i as usize],
-                ]
-                .as_ptr(),
+                p_attachments: attachments.as_ptr(), 
                 width: extent.width,
                 height: extent.height,
                 layers: 1,
@@ -507,15 +515,15 @@ impl RenderPass {
         self.color_image.image.destroy(device);
         self.depth_image.image.destroy(device);
 
-        self.color_image = ColorImage::new(device, window.get_extent().0, window.get_extent().1);
-        self.depth_image = DepthImage::new(device, window.get_extent().0, window.get_extent().1);
+        self.color_image = ColorImage::new(device, swapchain.get_swapchain_info().extent.width, swapchain.get_swapchain_info().extent.height);
+        self.depth_image = DepthImage::new(device, swapchain.get_swapchain_info().extent.width, swapchain.get_swapchain_info().extent.height);
 
         self.framebuffers = RenderPass::create_framebuffers(
             device,
             swapchain.get_swapchain_info().image_count,
             vk::Extent2D {
-                width: window.get_extent().0,
-                height: window.get_extent().1,
+                width: swapchain.get_swapchain_info().extent.width,
+                height: swapchain.get_swapchain_info().extent.height,
             },
             self.render_pass,
             &swapchain.get_image_views(),

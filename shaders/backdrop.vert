@@ -19,7 +19,7 @@ layout (location = 2) out uint o_instance_count;
 void main() {
     float scale_factor = 25;
 
-    gl_Position = proj.proj * vec4(inVertex.x * 720, inVertex.y * 1280, -0.5, 1.0); 
+    gl_Position = proj.proj * vec4(inVertex.x * 720, inVertex.y * 1280, -0.05, 1.0); 
 
     texCoords = inVertex; 
     texID = pc_texID;

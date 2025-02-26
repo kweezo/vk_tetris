@@ -4,14 +4,19 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-glfw = { version = "0.58.0", features = ["vulkan"] }
+glfw = { version = "0.59.0", features = ["vulkan"] }
 glm = "0.2.3"
 png = "0.17.16"
 ash = { version = "0.38.0", features = ["linked"] }
 vk-mem = "0.4.0"
-serde_json = "1.0.132"
-serde = { version = "1.0.213", features = ["derive"] }
-bytemuck = "1.7"
-rand = "0.8.5"
+serde_json = "1.0.139"
+serde = { version = "1.0.218", features = ["derive"] }
+bytemuck = "1.21"
+rand = "0.9"
 stb_truetype_rust = "1.26.1"
-kira = {version = "0.10.2", opt-level = 3}
+
+kira = "0.10.4"
+[profile.dev]
+opt-level = 3
+[profile.release]
+opt-level = 3

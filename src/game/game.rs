@@ -2,7 +2,7 @@ use ::core::panic;
 
 use button::ButtonManager;
 use descriptor::DescriptorSet;
-use ash::vk::{self, Handle};
+use ash::vk;
 
 use crate::*;
 use super::*;
@@ -294,6 +294,8 @@ impl Game {
     }
 
     fn handle_resize(&mut self) {
+        self.window.update_size();
+
         self.core.recreate_swapchain(&self.window);
         self.render_pass.recreate_framebuffers(&self.window, &self.core.get_device(), &self.core.get_swapchain());
     }
@@ -318,26 +320,36 @@ impl Game {
             device!(self).reset_fences(&[self.fence.get_fence()]).expect("Failed to reset the board transfer fence");
         }
 
+        let wait_semaphores = [self.render_finish_semaphore.get_semaphore()];
+        let image_indices = [image_index];
+        let swapchains = [self.core.get_swapchain().get_swapchain_info().swapchain];
+
         let present_info = vk::PresentInfoKHR {
             s_type: vk::StructureType::PRESENT_INFO_KHR,
             wait_semaphore_count: 1,
-            p_wait_semaphores: [self.render_finish_semaphore.get_semaphore()].as_ptr(),
+            p_wait_semaphores: wait_semaphores.as_ptr(),
 
             swapchain_count: 1,
-            p_swapchains: [self.core.get_swapchain().get_swapchain_info().swapchain].as_ptr(),
-            p_image_indices: [image_index].as_ptr(),
+            p_swapchains: swapchains.as_ptr(),
+            p_image_indices: image_indices.as_ptr(),
 
             ..Default::default()
         };
+
+        let queue = self.core.get_device().get_queue();
 
         let result = unsafe{
             self.core.get_swapchain()
                 .get_swapchain_info()
                 .swapchain_device
-                .queue_present(self.core.get_device().get_queue(), &present_info)
+                .queue_present(queue, &present_info)
         };
 
         if matches!(result, Err(vk::Result::ERROR_OUT_OF_DATE_KHR)) {
+            unsafe{
+                device!(self).queue_wait_idle(queue).expect("Failed to wait for the presentation queue"); // IT HAS TO FUCKING WAIT NOBODY TOLD ME THAT NOT EVEN THE SPEC
+                //FUCK THIS AND THE 2 WEEKS I SPENT ON IT I CAnNOT
+            }
             self.handle_resize();
         }
 

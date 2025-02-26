@@ -1,5 +1,5 @@
 use super::{core::*, *};
-use ash::vk;
+use ash::vk::{self, Handle};
 
 pub struct CommandBuffer {
     command_buffer: vk::CommandBuffer,
@@ -110,11 +110,17 @@ impl CommandBuffer {
 
             ..Default::default()
         };
+        
+        let submit_slice = std::slice::from_ref(&submit_info);
+
+        let queue = device.get_queue();
 
         unsafe {
+            device.get_ash_device().queue_wait_idle(queue).expect("Failed to fail to fail the thingamajig");
+
             device.get_ash_device().queue_submit(
-                device.get_queue(),
-                std::slice::from_ref(&submit_info),
+                queue,
+                &submit_slice,
                 fence,
             )
         }

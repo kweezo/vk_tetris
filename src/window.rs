@@ -18,6 +18,7 @@ fn size_callback(_window: &mut glfw::Window, new_width: i32, new_height: i32) {
             WIDTH = 1;
             HEIGHT = 1;
         }
+        return;
     }
 
     unsafe{
@@ -44,12 +45,35 @@ impl Window {
         window.set_key_polling(true);
         window.set_size_callback(size_callback);
 
+        unsafe {
+            WIDTH = width;
+            HEIGHT = height;
+        }
+
         Window {
             glfw_context: context,
             events,
             window_handle: window,
             width,
             height,
+        }
+    }
+
+    pub fn update_size(&self) {
+        let new_size = self.window_handle.get_size();
+
+        if new_size.0 == 0 || new_size.1 == 0 {
+            unsafe{
+                WIDTH = 1;
+                HEIGHT = 1;
+            } 
+
+            return;
+        }
+
+        unsafe{
+            WIDTH = new_size.0 as u32;
+            HEIGHT = new_size.0 as u32;
         }
     }
 

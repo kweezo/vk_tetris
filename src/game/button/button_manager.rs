@@ -1,5 +1,5 @@
 use crate::{game::text::TextRenderer, types::*, *};
-use ash::vk::{self, Handle};
+use ash::vk;
 use types::VertexInputData;
 use super::Button;
 use std::collections::HashMap;
@@ -49,6 +49,7 @@ impl<'a> ButtonManager {
         .expect("Failed to load the button texture");
 
         command_buffer.end(device);
+
 
 
         CommandBuffer::submit(device, &[command_buffer.get_command_buffer()], &[], &[], fence.get_fence());
@@ -264,7 +265,6 @@ impl<'a> ButtonManager {
         }
 
         self.press_command_buffer.end(device);
-
 
         CommandBuffer::submit(device, &[self.press_command_buffer.get_command_buffer()], &[], &[], self.fence.get_fence());
 

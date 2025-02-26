@@ -22,7 +22,7 @@ pkgs.mkShell {
     pkgs.gdb
     pkgs.valgrind
     pkgs.cargo
-    pkgs.rustc
+   # pkgs.rustc
     pkgs.renderdoc
     pkgs.alsa-lib
     pkgs.pkg-config

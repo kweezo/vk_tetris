@@ -41,13 +41,13 @@ struct ScreenShake {
 
 impl ScreenShake {
     pub fn new() -> ScreenShake {
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
 
         let mut points = [(0f32, 0f32); 10];
 
         for p in points.iter_mut() {
-            *p = (rng.gen_range(-100..100) as f32 / 10.0,
-            rng.gen_range(-100..100) as f32 / 10.0);
+            *p = (rng.random_range(-100..100) as f32 / 10.0,
+            rng.random_range(-100..100) as f32 / 10.0);
         }
 
         ScreenShake { points, last_dir_change: 0, curr_point_index: 0, pos: (0f32, 0f32) }
@@ -93,8 +93,6 @@ pub struct Board {
 
     transfer_finished_fence: Fence,
 
-    transfer_finished_thread_handle: Option<std::thread::JoinHandle<()>>,
-
     fall_interval: u32,
     previous_interval: u128,
 
@@ -129,7 +127,7 @@ impl<'a> Board {
         let place_sound = Sound::new("place.wav",
         2.0, false);
 
-        let mut rng = thread_rng();
+        let mut rng = rand::rng();
 
         let mut tetromino = Tetromino::new((3, 2), [255; 3], TetrominoShape::rand(&mut rng));
         tetromino.translate((0, 0), &[[[0; 4]; PLAYFIELD_WIDTH]; PLAYFIELD_HEIGHT]);
@@ -144,7 +142,6 @@ impl<'a> Board {
             projection_uniform: buffers.2,
             tetromino_tex: buffers.3,
             transfer_finished_fence: Fence::new(device, false),
-            transfer_finished_thread_handle: None,
             grid: [[[0; 4]; PLAYFIELD_WIDTH]; PLAYFIELD_HEIGHT],
             fall_interval: 1500,
             previous_interval: 0,
@@ -464,7 +461,7 @@ impl<'a> Board {
     }
 
     fn get_random_color(&mut self) -> [u8; 3] {
-        match self.rng.gen_range(1..7) {
+        match self.rng.random_range(1..7) {
             1 => [255, 0, 0],
             2 => [0, 0, 255],
             3 => [0, 255, 0],
@@ -619,14 +616,14 @@ impl<'a> Board {
         render_pass: &RenderPass,
         command_buffer: &CommandBuffer,
         subpass_index: u32,
-        screen_res: (u32, u32)
+        _screen_res: (u32, u32)
     ) {
         let data = Board::get_instance_data(self);
 
         if data.is_empty() {
             return;
         }
-        self.handle_transfer(device, &data, screen_res);
+        self.handle_transfer(device, &data, (720, 1280));
         self.record_draw_command_buffer(
             device,
             render_pass,

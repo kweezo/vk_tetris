@@ -43,5 +43,5 @@ void main() {
 
 
     gl_Position = proj.proj * vec4(spaced_coords,
-     -0.1, 1.0); 
+     -0.3, 1.0); 
 }

@@ -25,7 +25,7 @@ impl TetrominoShape {
             TetrominoShape::Z,
         ];
 
-        types[rng.gen_range(0..7) as usize]
+        types[rng.random_range(0..7) as usize]
     }
 }
 
