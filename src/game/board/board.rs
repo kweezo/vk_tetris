@@ -33,45 +33,37 @@ fn length(x: f32, y: f32) -> f32{
 }
 
 struct ScreenShake {
-    points: [(f32, f32); 10],
+    points: [(f32, f32); 12],
     last_dir_change: u64,
     curr_point_index: usize,
-    pos: (f32, f32)
 }
 
 impl ScreenShake {
     pub fn new() -> ScreenShake {
         let mut rng = rand::rng();
 
-        let mut points = [(0f32, 0f32); 10];
+        let mut points = [(0f32, 0f32); 12];
 
         for p in points.iter_mut() {
-            *p = (rng.random_range(-100..100) as f32 / 10.0,
-            rng.random_range(-100..100) as f32 / 10.0);
+            *p = (rng.random_range(-10..10) as f32,
+            rng.random_range(-10..10) as f32);
         }
 
-        ScreenShake { points, last_dir_change: 0, curr_point_index: 0, pos: (0f32, 0f32) }
+        ScreenShake { points, last_dir_change: 0, curr_point_index: 0 }
     }
 
     pub fn update(&mut self, curr_time: u64) -> (f32, f32) {
 
-        if curr_time - self.last_dir_change > 100 {
+        if curr_time - self.last_dir_change > 20 {
             self.last_dir_change = curr_time;
             self.curr_point_index += 1;
         }
 
-        if self.curr_point_index == self.points.len() {
+        if self.curr_point_index >= self.points.len() {
             return (std::f32::NAN, std::f32::NAN);
         }
         
-        let scalar = lerp(
-            length(self.pos.0, self.pos.1),
-            length(self.points[self.curr_point_index].0, self.points[self.curr_point_index].1 ), 1.0);
-
-        self.pos.0 *= scalar;
-        self.pos.1 *= scalar;
-
-        self.pos
+        (self.points[self.curr_point_index].0, self.points[self.curr_point_index].1)
     }
 }
 
@@ -113,7 +105,6 @@ impl<'a> Board {
     pub fn new(
         device: &Device,
         command_pool: &CommandPool,
-        screen_res: (u32, u32),
     ) -> Board {
         let mut transfer_command_buffer = CommandBuffer::new(device, command_pool, false);
 
@@ -121,7 +112,6 @@ impl<'a> Board {
             device,
             &mut transfer_command_buffer,
             "tetromino_piece.png",
-            screen_res,
         );
 
         let place_sound = Sound::new("place.wav",
@@ -129,7 +119,7 @@ impl<'a> Board {
 
         let mut rng = rand::rng();
 
-        let mut tetromino = Tetromino::new((3, 2), [255; 3], TetrominoShape::rand(&mut rng));
+        let mut tetromino = Tetromino::new((3, 2), [255; 3], TetrominoShape::rand(&mut rng, TetrominoShape::I));
         tetromino.translate((0, 0), &[[[0; 4]; PLAYFIELD_WIDTH]; PLAYFIELD_HEIGHT]);
 
         Board {
@@ -154,7 +144,9 @@ impl<'a> Board {
         }
     }
 
-    fn get_projection_matrix(screen_res: (u32, u32), offset: (f32, f32)) -> [f32; 16] {
+    fn get_projection_matrix(offset: (f32, f32)) -> [f32; 16] {
+        let screen_res = (720, 1280);
+
         let left = 0f32 + offset.0;
         let right = screen_res.0 as f32 + offset.0;
 
@@ -188,7 +180,6 @@ impl<'a> Board {
         device: &Device,
         command_buffer: &mut CommandBuffer,
         tetromino_tex_path: &str,
-        screen_res: (u32, u32),
     ) -> (Buffer, Buffer, Buffer, Texture) {
         let indices: [u16; 6] = [0, 1, 2, 1, 2, 3];
 
@@ -221,7 +212,7 @@ impl<'a> Board {
         let tetromino_tex = Texture::new(tetromino_tex_path, device, command_buffer, false)
             .expect("Failed to load the base tetromino texture");
 
-        let projection = Board::get_projection_matrix(screen_res, (0.0, 0.0));
+        let projection = Board::get_projection_matrix((0.0, 0.0));
         let projection_buffer = Buffer::new(
             device,
             command_buffer,
@@ -255,10 +246,6 @@ impl<'a> Board {
             projection_buffer,
             tetromino_tex,
         )
-    }
-
-    fn screen_shake(&self) {
-
     }
 
     
@@ -383,24 +370,33 @@ impl<'a> Board {
         data
     }
 
-    fn handle_screen_shake(&mut self, device: &Device, screen_res: (u32, u32)) {
+    fn handle_screen_shake(&mut self, device: &Device, time: u64) {
         if self.screen_shake.is_none() {
             return;
         }
 
-        let projection = Board::get_projection_matrix(screen_res, self.screen_shake.as_ref().unwrap().pos);
+        let mut pos = self.screen_shake.as_mut().unwrap().update(time);
+
+        if pos.0.is_nan() || pos.1.is_nan() {
+            self.screen_shake = None;
+            pos = (0.0, 0.0);
+        }
+
+
+        let projection = Board::get_projection_matrix(pos);
 
         self.projection_uniform.update(device, &mut self.transfer_command_buffer, bytes_of(&projection));
+
     }
 
-    pub fn handle_transfer(&mut self, device: &Device, data: &Vec<u8>, screen_res: (u32, u32)) {
+    pub fn handle_transfer(&mut self, device: &Device, data: &Vec<u8>, time: u64) {
         self.transfer_command_buffer.begin(
             device,
             &vk::CommandBufferInheritanceInfo::default(),
             vk::CommandBufferUsageFlags::empty(),
         );
 
-        self.handle_screen_shake(device, screen_res);
+        self.handle_screen_shake(device, time);
 
         if data.len() != self.previous_tetromino_count {
             self.previous_tetromino_count = data.len();
@@ -512,7 +508,7 @@ impl<'a> Board {
     }
 
     fn handle_gravity(&mut self) {
-        //self.tetromino.translate((0, 1), &self.grid);
+        self.tetromino.translate((0, 1), &self.grid);
     }
 
     pub fn reset_game(&mut self) {
@@ -616,14 +612,14 @@ impl<'a> Board {
         render_pass: &RenderPass,
         command_buffer: &CommandBuffer,
         subpass_index: u32,
-        _screen_res: (u32, u32)
+        time: u64
     ) {
         let data = Board::get_instance_data(self);
 
         if data.is_empty() {
             return;
         }
-        self.handle_transfer(device, &data, (720, 1280));
+        self.handle_transfer(device, &data, time);
         self.record_draw_command_buffer(
             device,
             render_pass,
@@ -636,7 +632,7 @@ impl<'a> Board {
         self.tetromino = Tetromino::new(
             (x, y),
             self.get_random_color(),
-            TetrominoShape::rand(&mut self.rng),
+            TetrominoShape::rand(&mut self.rng, self.tetromino.get_shape()),
         );
 
         let mut scalar = 0;

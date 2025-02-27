@@ -48,7 +48,7 @@ impl<'a> UserInterface {
 
         let mut button_manager = ButtonManager::new(device, command_pool);
 
-        let mut buttons = button_manager.create_buttons(device, &[(&Rect{x: 100, y: 100, width: 300, height: 100}, (255, 255, 255), "RESET")],
+        let mut buttons = button_manager.create_buttons(device, &[(&Rect{x: 400, y: 900, width: 300, height: 100}, (255, 255, 255), "RESET")],
          &text_manager.get_text_renderer());
 
         let reset_button = buttons.remove(0);

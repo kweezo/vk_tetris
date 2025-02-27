@@ -1,6 +1,6 @@
 use ash::vk;
 
-use crate::{vulkan::shader::Shader, window::Window};
+use crate::vulkan::shader::Shader;
 
 use super::{core::*, *};
 
@@ -507,7 +507,6 @@ impl RenderPass {
 
     pub fn recreate_framebuffers(
         &mut self,
-        window: &Window,
         device: &Device,
         swapchain: &Swapchain,
     ) {

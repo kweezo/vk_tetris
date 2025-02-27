@@ -2,7 +2,7 @@ use rand::prelude::*;
 
 use crate::types::*;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum TetrominoShape {
     I,
     J,
@@ -14,7 +14,7 @@ pub enum TetrominoShape {
 }
 
 impl TetrominoShape {
-    pub fn rand(rng: &mut ThreadRng) -> TetrominoShape {
+    pub fn rand(rng: &mut ThreadRng, prev_shape: TetrominoShape) -> TetrominoShape {
         let types = [
             TetrominoShape::I,
             TetrominoShape::J,
@@ -25,7 +25,12 @@ impl TetrominoShape {
             TetrominoShape::Z,
         ];
 
-        types[rng.random_range(0..7) as usize]
+        let mut shape = types[rng.random_range(0..7) as usize];
+        while shape == prev_shape {
+            shape = types[rng.random_range(0..7) as usize];
+        } 
+
+        return shape;
     }
 }
 
@@ -313,6 +318,10 @@ impl Tetromino {
 
     pub fn get_color(&self) -> [u8; 4] {
         self.color
+    }
+
+    pub fn get_shape(&self) -> TetrominoShape {
+        self.shape
     }
 
     pub fn get_ghost_color(&self) -> [u8; 4] {
